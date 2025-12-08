@@ -15,25 +15,25 @@
 </script>
 
 <div class="card bg-base-100 shadow-md border-l-4" style={accentStyle}>
-	<div class="card-body p-4">
-		<div class="flex items-center gap-3 mb-3">
+	<div class="card-body p-3 sm:p-4">
+		<div class="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
 			{#if persona}
 				<div
-					class="w-10 h-10 rounded-full flex items-center justify-center text-xl"
+					class="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-lg sm:text-xl shrink-0"
 					style="background-color: {persona.accentColor}20"
 				>
 					{persona.avatarEmoji}
 				</div>
-				<div>
-					<h3 class="font-semibold text-base-content">{persona.name}</h3>
-					<p class="text-xs text-base-content/60">{persona.role}</p>
+				<div class="min-w-0">
+					<h3 class="font-semibold text-sm sm:text-base text-base-content truncate">{persona.name}</h3>
+					<p class="text-xs text-base-content/60 truncate">{persona.role}</p>
 				</div>
 			{:else}
-				<div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center">
-					<span class="text-xl">🤖</span>
+				<div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-base-300 flex items-center justify-center shrink-0">
+					<span class="text-lg sm:text-xl">🤖</span>
 				</div>
 				<div>
-					<h3 class="font-semibold text-base-content">Advisor</h3>
+					<h3 class="font-semibold text-sm sm:text-base text-base-content">Advisor</h3>
 				</div>
 			{/if}
 
@@ -42,7 +42,7 @@
 			{/if}
 		</div>
 
-		<div class="prose prose-sm max-w-none">
+		<div class="prose prose-sm max-w-none text-sm sm:text-base">
 			{@html content.replace(/\n/g, '<br>')}
 		</div>
 	</div>

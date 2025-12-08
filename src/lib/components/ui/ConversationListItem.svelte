@@ -5,9 +5,10 @@
 		href: string;
 		active?: boolean;
 		onDelete?: (id: string) => void;
+		onclick?: () => void;
 	}
 
-	let { id, title, href, active = false, onDelete }: Props = $props();
+	let { id, title, href, active = false, onDelete, onclick }: Props = $props();
 
 	function handleDelete(e: MouseEvent) {
 		e.preventDefault();
@@ -20,6 +21,8 @@
 		const target = e.target as HTMLElement;
 		if (target.closest('[data-delete-btn]')) {
 			e.preventDefault();
+		} else {
+			onclick?.();
 		}
 	}
 </script>

@@ -123,8 +123,8 @@
 
 <div class="flex flex-col h-full">
 	<!-- Header -->
-	<header class="p-4 border-b border-base-300 bg-base-100">
-		<div class="flex items-center justify-between">
+	<header class="p-2 sm:p-4 border-b border-base-300 bg-base-100">
+		<div class="flex items-center justify-between gap-2">
 			<PersonaSelector
 				{personas}
 				selected={selectedPersonaId || defaultPersonaId}
@@ -137,7 +137,7 @@
 	</header>
 
 	<!-- Messages -->
-	<div class="flex-1 overflow-y-auto p-4 space-y-4">
+	<div class="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 sm:space-y-4">
 		{#if chat.error}
 			<div class="alert alert-error">
 				<span>Error: {chat.error.message}</span>
@@ -145,10 +145,10 @@
 		{/if}
 
 		{#if chat.messages.length === 0}
-			<div class="flex flex-col items-center justify-center h-full text-center">
-				<div class="text-6xl mb-4">{selectedPersona?.avatarEmoji ?? '🦉'}</div>
-				<h3 class="text-xl font-semibold mb-2">Ask {selectedPersona?.name ?? 'the Council'}</h3>
-				<p class="text-base-content/60 max-w-md">
+			<div class="flex flex-col items-center justify-center h-full text-center px-4">
+				<div class="text-5xl sm:text-6xl mb-4">{selectedPersona?.avatarEmoji ?? '🦉'}</div>
+				<h3 class="text-lg sm:text-xl font-semibold mb-2">Ask {selectedPersona?.name ?? 'the Council'}</h3>
+				<p class="text-sm sm:text-base text-base-content/60 max-w-md">
 					{selectedPersona?.role ?? 'Get balanced, thoughtful guidance on your questions.'}
 				</p>
 			</div>
@@ -156,7 +156,7 @@
 			{#each chat.messages as message (message.id)}
 				{#if message.role === 'user'}
 					<div class="chat chat-end">
-						<div class="chat-bubble chat-bubble-primary">
+						<div class="chat-bubble chat-bubble-primary text-sm sm:text-base">
 							{getMessageText(message)}
 						</div>
 					</div>
@@ -173,7 +173,7 @@
 	</div>
 
 	<!-- Input -->
-	<footer class="p-4 border-t border-base-300 bg-base-100">
+	<footer class="p-2 sm:p-4 border-t border-base-300 bg-base-100">
 		<QuestionInput
 			onSubmit={handleQuestionSubmit}
 			disabled={chat.status === 'streaming' || chat.status === 'submitted'}
