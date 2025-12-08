@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { signOut } from '$lib/auth-client';
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { UserMenu, ConversationListItem } from '$lib/components/ui';
 
 	let { data, children } = $props();
@@ -8,6 +9,21 @@
 	async function handleSignOut() {
 		await signOut();
 		goto('/login');
+	}
+
+	async function handleDeleteConversation(id: string) {
+		const response = await fetch(`/api/conversations/${id}`, {
+			method: 'DELETE'
+		});
+
+		if (response.ok) {
+			// If we're currently viewing this conversation, navigate away
+			if ($page.params.id === id) {
+				goto('/chat');
+			}
+			// Refresh the layout data to update the sidebar
+			invalidateAll();
+		}
 	}
 </script>
 
@@ -36,13 +52,17 @@
 			{#if data.conversations.length > 0}
 				<div class="divider text-xs">Recent Chats</div>
 
-				{#each data.conversations as conversation (conversation.id)}
-					<ConversationListItem
-						id={conversation.id}
-						title={conversation.title}
-						href="/chat/{conversation.id}"
-					/>
-				{/each}
+				<ul class="list">
+					{#each data.conversations as conversation (conversation.id)}
+						<ConversationListItem
+							id={conversation.id}
+							title={conversation.title}
+							href="/chat/{conversation.id}"
+							active={$page.params.id === conversation.id}
+							onDelete={handleDeleteConversation}
+						/>
+					{/each}
+				</ul>
 			{/if}
 		</nav>
 
