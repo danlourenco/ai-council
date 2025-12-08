@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { PersonaPreviewCard } from '$lib/components/ui';
+
 	let { data } = $props();
 </script>
 
@@ -14,18 +16,9 @@
 		</p>
 
 		<div class="flex gap-4 justify-center mb-12">
-			<div class="card bg-base-100 shadow-lg border-l-4 border-sage p-4 w-32">
-				<span class="text-3xl mb-2">🦉</span>
-				<span class="text-sm font-medium">The Sage</span>
-			</div>
-			<div class="card bg-base-100 shadow-lg border-l-4 border-plum p-4 w-32">
-				<span class="text-3xl mb-2">🦊</span>
-				<span class="text-sm font-medium">The Skeptic</span>
-			</div>
-			<div class="card bg-base-100 shadow-lg border-l-4 border-slate p-4 w-32">
-				<span class="text-3xl mb-2">🦅</span>
-				<span class="text-sm font-medium">The Strategist</span>
-			</div>
+			<PersonaPreviewCard emoji="🦉" name="The Sage" accentColor="#7d9a78" />
+			<PersonaPreviewCard emoji="🦊" name="The Skeptic" accentColor="#8b6b8b" />
+			<PersonaPreviewCard emoji="🦅" name="The Strategist" accentColor="#6b7b8b" />
 		</div>
 
 		{#if data.user}

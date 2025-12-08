@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { PersonaAvatar, LoadingButton } from '$lib/components/ui';
+
 	let { data } = $props();
 
 	let editingPersona = $state<string | null>(null);
@@ -61,7 +63,7 @@
 						<!-- Edit Mode -->
 						<div class="space-y-4">
 							<div class="flex items-center gap-3 mb-4">
-								<span class="text-4xl">{persona.avatarEmoji}</span>
+								<PersonaAvatar emoji={persona.avatarEmoji} accentColor={persona.accentColor} size="lg" />
 								<div class="flex-1 space-y-2">
 									<input
 										type="text"
@@ -93,25 +95,16 @@
 							</div>
 
 							<div class="flex justify-end gap-2">
-								<button class="btn btn-ghost" onclick={cancelEditing}> Cancel </button>
-								<button
-									class="btn btn-primary"
-									onclick={() => savePersona(persona.id)}
-									disabled={isSaving}
-								>
-									{isSaving ? 'Saving...' : 'Save Changes'}
-								</button>
+								<button class="btn btn-ghost" onclick={cancelEditing}>Cancel</button>
+								<LoadingButton loading={isSaving} onclick={() => savePersona(persona.id)}>
+									Save Changes
+								</LoadingButton>
 							</div>
 						</div>
 					{:else}
 						<!-- View Mode -->
 						<div class="flex items-start gap-4">
-							<div
-								class="w-16 h-16 rounded-full flex items-center justify-center text-3xl"
-								style="background-color: {persona.accentColor}20"
-							>
-								{persona.avatarEmoji}
-							</div>
+							<PersonaAvatar emoji={persona.avatarEmoji} accentColor={persona.accentColor} size="lg" />
 							<div class="flex-1">
 								<h2 class="text-xl font-semibold">{persona.name}</h2>
 								<p class="text-base-content/70">{persona.role}</p>
