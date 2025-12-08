@@ -35,13 +35,17 @@ export class ConversationService {
 
 		const newConversation: NewConversation = {
 			id,
-			projectId: data.projectId ?? null,
 			title: data.title,
 			mode: data.mode ?? 'quick',
 			createdBy: userId,
 			createdAt: now,
 			updatedAt: now
 		};
+
+		// Only include projectId if it's actually provided
+		if (data.projectId) {
+			newConversation.projectId = data.projectId;
+		}
 
 		await this.db.insert(conversations).values(newConversation);
 

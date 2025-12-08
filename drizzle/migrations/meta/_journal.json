@@ -8,6 +8,13 @@
       "when": 1765165014634,
       "tag": "0000_concerned_smasher",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1765201511722,
+      "tag": "0001_unique_arclight",
+      "breakpoints": true
     }
   ]
 }

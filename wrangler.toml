@@ -8,6 +8,7 @@ compatibility_flags = ["nodejs_compat"]
 binding = "DB"
 database_name = "council-db"
 database_id = "local"
+migrations_dir = "drizzle/migrations"
 
 [vars]
 ENVIRONMENT = "development"
