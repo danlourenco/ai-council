@@ -1,12 +1,60 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
-@plugin 'daisyui' {
-	themes: light --default, dark, council;
+@plugin 'daisyui';
+
+/* Custom Council Theme for DaisyUI v5 */
+@plugin "daisyui/theme" {
+	name: "council";
+	default: true;
+	color-scheme: light;
+
+	/* Base colors - warm parchment palette */
+	--color-base-100: oklch(97.5% 0.01 85);    /* #faf8f4 warm white */
+	--color-base-200: oklch(95.5% 0.015 85);   /* #f4f1ea parchment */
+	--color-base-300: oklch(92% 0.015 85);     /* #e8e4db darker parchment */
+	--color-base-content: oklch(25% 0.02 70);  /* #2d2a24 ink dark */
+
+	/* Primary - Sage green (The Sage) */
+	--color-primary: oklch(62% 0.08 145);      /* #7d9a78 */
+	--color-primary-content: oklch(97.5% 0.01 85);
+
+	/* Secondary - Plum (The Skeptic) */
+	--color-secondary: oklch(55% 0.08 330);    /* #8b6b8b */
+	--color-secondary-content: oklch(97.5% 0.01 85);
+
+	/* Accent - Gold */
+	--color-accent: oklch(72% 0.15 85);        /* #c9a227 */
+	--color-accent-content: oklch(25% 0.02 70);
+
+	/* Neutral - Muted ink */
+	--color-neutral: oklch(42% 0.02 70);       /* #5c574d */
+	--color-neutral-content: oklch(97.5% 0.01 85);
+
+	/* Info - Slate (The Strategist) */
+	--color-info: oklch(55% 0.04 250);         /* #6b7b8b */
+	--color-info-content: oklch(97.5% 0.01 85);
+
+	/* Success - Sage green */
+	--color-success: oklch(62% 0.08 145);      /* #7d9a78 */
+	--color-success-content: oklch(97.5% 0.01 85);
+
+	/* Warning - Gold */
+	--color-warning: oklch(72% 0.15 85);       /* #c9a227 */
+	--color-warning-content: oklch(25% 0.02 70);
+
+	/* Error - Copper */
+	--color-error: oklch(58% 0.12 55);         /* #b87333 */
+	--color-error-content: oklch(97.5% 0.01 85);
+
+	/* Border radius */
+	--radius-selector: 0.5rem;
+	--radius-field: 0.375rem;
+	--radius-box: 0.75rem;
 }
 
-/* Custom Council Theme for DaisyUI */
+/* Tailwind theme extensions for custom colors */
 @theme {
-	/* Council color palette */
+	/* Council color palette for direct use */
 	--color-parchment: #f4f1ea;
 	--color-warm: #faf8f4;
 	--color-ink-dark: #2d2a24;
@@ -21,43 +69,6 @@
 	--font-display: 'Crimson Pro', serif;
 	--font-body: 'DM Sans', sans-serif;
 	--font-mono: 'JetBrains Mono', monospace;
-}
-
-/* DaisyUI Council Theme */
-[data-theme='council'] {
-	--color-base-100: #faf8f4;
-	--color-base-200: #f4f1ea;
-	--color-base-300: #e8e4db;
-	--color-base-content: #2d2a24;
-
-	--color-primary: #7d9a78;
-	--color-primary-content: #faf8f4;
-
-	--color-secondary: #8b6b8b;
-	--color-secondary-content: #faf8f4;
-
-	--color-accent: #c9a227;
-	--color-accent-content: #2d2a24;
-
-	--color-neutral: #5c574d;
-	--color-neutral-content: #faf8f4;
-
-	--color-info: #6b7b8b;
-	--color-info-content: #faf8f4;
-
-	--color-success: #7d9a78;
-	--color-success-content: #faf8f4;
-
-	--color-warning: #c9a227;
-	--color-warning-content: #2d2a24;
-
-	--color-error: #b87333;
-	--color-error-content: #faf8f4;
-
-	/* Border radius */
-	--radius-selector: 0.5rem;
-	--radius-field: 0.375rem;
-	--radius-box: 0.75rem;
 }
 
 /* Typography classes */

@@ -17,15 +17,7 @@ const preview: Preview = {
 				{ name: 'dark', value: '#2d2a24' }
 			]
 		}
-	},
-	decorators: [
-		(Story) => ({
-			Component: Story,
-			props: {
-				style: 'font-family: "DM Sans", sans-serif;'
-			}
-		})
-	]
+	}
 };
 
 export default preview;
