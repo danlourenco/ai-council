@@ -1,0 +1,83 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+@plugin 'daisyui' {
+	themes: light --default, dark, council;
+}
+
+/* Custom Council Theme for DaisyUI */
+@theme {
+	/* Council color palette */
+	--color-parchment: #f4f1ea;
+	--color-warm: #faf8f4;
+	--color-ink-dark: #2d2a24;
+	--color-ink-muted: #5c574d;
+	--color-gold: #c9a227;
+	--color-copper: #b87333;
+	--color-sage: #7d9a78;
+	--color-plum: #8b6b8b;
+	--color-slate: #6b7b8b;
+
+	/* Typography */
+	--font-display: 'Crimson Pro', serif;
+	--font-body: 'DM Sans', sans-serif;
+	--font-mono: 'JetBrains Mono', monospace;
+}
+
+/* DaisyUI Council Theme */
+[data-theme='council'] {
+	--color-base-100: #faf8f4;
+	--color-base-200: #f4f1ea;
+	--color-base-300: #e8e4db;
+	--color-base-content: #2d2a24;
+
+	--color-primary: #7d9a78;
+	--color-primary-content: #faf8f4;
+
+	--color-secondary: #8b6b8b;
+	--color-secondary-content: #faf8f4;
+
+	--color-accent: #c9a227;
+	--color-accent-content: #2d2a24;
+
+	--color-neutral: #5c574d;
+	--color-neutral-content: #faf8f4;
+
+	--color-info: #6b7b8b;
+	--color-info-content: #faf8f4;
+
+	--color-success: #7d9a78;
+	--color-success-content: #faf8f4;
+
+	--color-warning: #c9a227;
+	--color-warning-content: #2d2a24;
+
+	--color-error: #b87333;
+	--color-error-content: #faf8f4;
+
+	/* Border radius */
+	--radius-selector: 0.5rem;
+	--radius-field: 0.375rem;
+	--radius-box: 0.75rem;
+}
+
+/* Typography classes */
+.font-display {
+	font-family: var(--font-display);
+}
+
+.font-body {
+	font-family: var(--font-body);
+}
+
+/* Base styles */
+html {
+	font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6 {
+	font-family: var(--font-display);
+}
+
+code, pre, kbd {
+	font-family: var(--font-mono);
+}

@@ -1,0 +1,19 @@
+name = "council"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 Database
+# For production: run `wrangler d1 create council-db` and update database_id
+[[d1_databases]]
+binding = "DB"
+database_name = "council-db"
+database_id = "local"
+
+[vars]
+ENVIRONMENT = "development"
+
+# Secrets are set via `wrangler secret put <KEY>`
+# ANTHROPIC_API_KEY
+# OPENAI_API_KEY
+# GOOGLE_AI_API_KEY
+# BETTER_AUTH_SECRET
