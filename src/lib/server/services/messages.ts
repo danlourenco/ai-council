@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import type { Database } from '../db';
 import { messages, type NewMessage, type Message, type MessageRole } from '../db/schema';
@@ -51,6 +51,21 @@ export class MessageService {
 	async get(id: string): Promise<Message | undefined> {
 		return this.db.query.messages.findFirst({
 			where: eq(messages.id, id)
+		});
+	}
+
+	async getByIds(ids: string[]): Promise<Message[]> {
+		if (ids.length === 0) return [];
+		return this.db.query.messages.findMany({
+			where: inArray(messages.id, ids),
+			orderBy: [messages.createdAt]
+		});
+	}
+
+	async getByParentId(parentMessageId: string): Promise<Message[]> {
+		return this.db.query.messages.findMany({
+			where: eq(messages.parentMessageId, parentMessageId),
+			orderBy: [messages.createdAt]
 		});
 	}
 }

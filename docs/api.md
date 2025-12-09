@@ -235,6 +235,61 @@ d:{"finishReason":"stop","usage":{"promptTokens":150,"completionTokens":500}}
 | `d:` | Data | Finish metadata |
 | `e:` | Error | Error message |
 
+### Send Message (Brain Trust Mode)
+
+In Brain Trust mode, advisors are queried sequentially. Each advisor sees previous responses.
+
+```http
+POST /api/chat
+Content-Type: application/json
+
+{
+  "messages": [
+    { "role": "user", "content": "Should I quit my job?" },
+    { "role": "assistant", "content": "Previous advisor's response..." }
+  ],
+  "personaId": "persona_skeptic",
+  "conversationId": "conv_xyz789",
+  "mode": "brain-trust",
+  "parentMessageId": "msg_user123"
+}
+```
+
+**Additional Request Fields**:
+- `mode`: Set to `"brain-trust"` for Brain Trust flow
+- `parentMessageId`: The database ID of the user message (links all advisor responses)
+
+**Additional Response Headers**:
+- `X-User-Message-Id`: Database ID of the saved user message (only on first advisor call)
+
+### Generate Synthesis
+
+After all advisors respond, generate a synthesis of their perspectives.
+
+```http
+POST /api/chat/synthesis
+Content-Type: application/json
+
+{
+  "conversationId": "conv_xyz789",
+  "userQuestionId": "msg_user123"
+}
+```
+
+**Response**: Server-Sent Events stream with synthesis content
+
+**Stream format** (Vercel AI SDK UI Message Stream):
+```
+data: {"type":"text-delta","delta":"## Points"}
+data: {"type":"text-delta","delta":" of Agreement"}
+data: {"type":"finish",...}
+```
+
+The synthesis includes:
+- **Points of Agreement**: Where advisors align
+- **Key Tensions**: Where advisors disagree
+- **Recommended Next Steps**: Actionable guidance
+
 ---
 
 ## Error Responses

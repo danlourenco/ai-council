@@ -17,5 +17,6 @@
 		personas={data.personas}
 		conversationId={data.conversation.id}
 		initialMessages={data.messages}
+		initialMode={data.conversation.mode}
 	/>
 {/key}

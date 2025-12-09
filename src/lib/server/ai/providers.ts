@@ -32,3 +32,6 @@ export const defaultPersonaModels: Record<string, string> = {
 	'the-skeptic': 'gpt-4o',
 	'the-strategist': 'gemini-2.0-flash'
 };
+
+// Model used for Council Synthesis in Brain Trust mode
+export const SYNTHESIS_MODEL_ID = 'claude-sonnet-4';

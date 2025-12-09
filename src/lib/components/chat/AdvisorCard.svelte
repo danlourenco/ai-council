@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { marked } from 'marked';
 	import type { Persona } from '$lib/server/db/schema';
 
 	interface Props {
@@ -12,6 +13,14 @@
 	const accentStyle = $derived(
 		persona?.accentColor ? `border-left-color: ${persona.accentColor}` : ''
 	);
+
+	// Configure marked for safe rendering
+	marked.setOptions({
+		gfm: true,
+		breaks: true
+	});
+
+	const renderedContent = $derived(marked.parse(content) as string);
 </script>
 
 <div class="card bg-base-100 shadow-md border-l-4" style={accentStyle}>
@@ -43,7 +52,7 @@
 		</div>
 
 		<div class="prose prose-sm max-w-none text-sm sm:text-base">
-			{@html content.replace(/\n/g, '<br>')}
+			{@html renderedContent}
 		</div>
 	</div>
 </div>

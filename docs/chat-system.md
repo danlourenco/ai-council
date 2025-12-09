@@ -99,34 +99,36 @@ sequenceDiagram
     A->>DB: Save with critiqueOfMessageId
 ```
 
-### Brain Trust (Phase 2)
+### Brain Trust (Implemented)
 
-Multiple advisors respond in parallel, then synthesis.
+Multiple advisors respond **sequentially** (not in parallel), enabling each advisor to see and respond to previous perspectives. This allows for debate, critique, and building on ideas.
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant A as /api/chat
-    participant L1 as LLM 1 (Claude)
-    participant L2 as LLM 2 (GPT-4o)
-    participant L3 as LLM 3 (Gemini)
+    participant BT as BrainTrust
+    participant A1 as Advisor 1
+    participant A2 as Advisor 2
     participant S as Synthesizer
 
-    U->>A: Question
+    U->>BT: Question
 
-    par Parallel Requests
-        A->>L1: Stream request
-        A->>L2: Stream request
-        A->>L3: Stream request
-    end
+    Note over BT,A1: Advisor 1 sees only question
+    BT->>A1: Question
+    A1-->>BT: Response 1
 
-    L1-->>A: Response 1
-    L2-->>A: Response 2
-    L3-->>A: Response 3
+    Note over BT,A2: Advisor 2 sees question + Response 1
+    BT->>A2: Question + Response 1
+    A2-->>BT: Response 2 (can reference/critique A1)
 
-    A->>S: Synthesize all responses
-    S-->>A: Synthesis (agreement, tensions, next steps)
+    Note over BT,S: Synthesizer sees all
+    BT->>S: All messages
+    S-->>BT: Points of Agreement, Tensions, Next Steps
+
+    BT-->>U: Complete conversation
 ```
+
+For detailed documentation on the Brain Trust architecture, see [Brain Trust](./brain-trust.md).
 
 ## Provider Configuration
 
