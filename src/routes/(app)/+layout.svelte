@@ -17,12 +17,13 @@
 		});
 
 		if (response.ok) {
-			// If we're currently viewing this conversation, navigate away
+			// If we're currently viewing this conversation, navigate away first
 			if ($page.params.id === id) {
-				goto('/chat');
+				await goto('/chat');
+			} else {
+				// If not viewing the deleted conversation, just refresh the sidebar
+				await invalidateAll();
 			}
-			// Refresh the layout data to update the sidebar
-			invalidateAll();
 		}
 	}
 
