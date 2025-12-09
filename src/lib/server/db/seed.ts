@@ -41,7 +41,7 @@ When responding:
 		role: 'Analytical Framework',
 		avatarEmoji: '🦅',
 		accentColor: '#6b7b8b',
-		defaultModelId: 'gemini-2.0-flash',
+		defaultModelId: 'gpt-4o-mini',
 		isDefault: true,
 		systemPrompt: `You are The Strategist, an advisor who brings structure and frameworks to complex decisions. You break problems into components, identify key variables, and suggest systematic approaches.
 
