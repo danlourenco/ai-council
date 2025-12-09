@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
 	import { PersonaAvatar, LoadingButton } from '$lib/components/ui';
+	import { AVAILABLE_MODELS, getModelsByProvider, getModelInfo } from '$lib/models';
 
 	let { data } = $props();
 
@@ -7,13 +9,18 @@
 	let editName = $state('');
 	let editRole = $state('');
 	let editPrompt = $state('');
+	let editModelId = $state('');
 	let isSaving = $state(false);
+
+	// Group models by provider for the select dropdown
+	const modelsByProvider = getModelsByProvider();
 
 	function startEditing(persona: (typeof data.personas)[0]) {
 		editingPersona = persona.id;
 		editName = persona.name;
 		editRole = persona.role;
 		editPrompt = persona.systemPrompt;
+		editModelId = persona.defaultModelId;
 	}
 
 	function cancelEditing() {
@@ -21,6 +28,7 @@
 		editName = '';
 		editRole = '';
 		editPrompt = '';
+		editModelId = '';
 	}
 
 	async function savePersona(id: string) {
@@ -32,12 +40,15 @@
 				body: JSON.stringify({
 					name: editName,
 					role: editRole,
-					systemPrompt: editPrompt
+					systemPrompt: editPrompt,
+					defaultModelId: editModelId
 				})
 			});
 
 			if (response.ok) {
-				window.location.reload();
+				// Refresh data without full page reload
+				await invalidateAll();
+				cancelEditing();
 			}
 		} finally {
 			isSaving = false;
@@ -78,6 +89,28 @@
 										bind:value={editRole}
 									/>
 								</div>
+							</div>
+
+							<div class="form-control">
+								<label class="label" for="model-{persona.id}">
+									<span class="label-text text-sm">AI Model</span>
+								</label>
+								<select
+									id="model-{persona.id}"
+									class="select select-bordered w-full select-sm sm:select-md"
+									bind:value={editModelId}
+								>
+									{#each Object.entries(modelsByProvider) as [provider, models]}
+										<optgroup label={provider}>
+											{#each models as model}
+												<option value={model.id}>{model.name}</option>
+											{/each}
+										</optgroup>
+									{/each}
+								</select>
+								<p class="text-xs text-base-content/50 mt-1">
+									Choose the AI model this advisor will use for responses.
+								</p>
 							</div>
 
 							<div class="form-control">

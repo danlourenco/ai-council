@@ -3,6 +3,10 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModel } from 'ai';
 
+// Re-export model metadata from shared module
+export { AVAILABLE_MODELS, getModelInfo, getModelsByProvider } from '$lib/models';
+export type { ModelInfo } from '$lib/models';
+
 // Model ID to provider mapping
 const modelMap: Record<string, (env: Record<string, string>) => LanguageModel> = {
 	'claude-sonnet-4': (env) => createAnthropic({ apiKey: env.ANTHROPIC_API_KEY })('claude-sonnet-4-20250514'),
