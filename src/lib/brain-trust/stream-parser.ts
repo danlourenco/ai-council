@@ -57,8 +57,9 @@ export async function* parseAISDKStream(response: Response): AsyncGenerator<stri
 						// Older AI SDK format
 						yield part.text;
 					}
-				} catch {
-					// Skip malformed JSON - might be partial chunk
+				} catch (e) {
+					// Log malformed JSON for debugging
+					console.warn('[parseAISDKStream] Failed to parse JSON:', jsonStr.slice(0, 100), e);
 				}
 			}
 		}

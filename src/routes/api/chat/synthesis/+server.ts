@@ -123,12 +123,17 @@ Please synthesize these perspectives into a cohesive summary following your guid
 			}
 		});
 
-		// Return streaming response
+		// Return streaming response with headers to prevent buffering
 		const response = result.toUIMessageStreamResponse();
+		const headers = new Headers(response.headers);
+		headers.set('Transfer-Encoding', 'chunked');
+		headers.set('Connection', 'keep-alive');
+		headers.set('Cache-Control', 'no-cache, no-transform');
+		headers.set('X-Accel-Buffering', 'no');
 
 		return new Response(response.body, {
 			status: response.status,
-			headers: response.headers
+			headers
 		});
 	} catch (error) {
 		console.error('[synthesis] Error:', error);

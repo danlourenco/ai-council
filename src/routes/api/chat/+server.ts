@@ -220,11 +220,17 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 		});
 
 		// Add conversation ID and user message ID to response headers
+		// Also add streaming headers to prevent buffering in edge environments
 		const headers = new Headers(response.headers);
 		headers.set('X-Conversation-Id', convId);
 		if (userMessageId) {
 			headers.set('X-User-Message-Id', userMessageId);
 		}
+		// These headers help ensure proper streaming in production
+		headers.set('Transfer-Encoding', 'chunked');
+		headers.set('Connection', 'keep-alive');
+		headers.set('Cache-Control', 'no-cache, no-transform');
+		headers.set('X-Accel-Buffering', 'no');
 
 		return new Response(response.body, {
 			status: response.status,
