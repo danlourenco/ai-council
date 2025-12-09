@@ -321,9 +321,6 @@
 	<header class="p-2 sm:p-4 border-b border-base-300 bg-base-100 space-y-3">
 		<div class="flex items-center justify-between gap-2">
 			<ModeSelector {mode} onSelect={handleModeChange} disabled={isBrainTrustActive} />
-			{#if hasMessages || currentConversationId}
-				<button class="btn btn-ghost btn-sm" onclick={startNewChat}>New Chat</button>
-			{/if}
 		</div>
 
 		<!-- Persona Selector -->
