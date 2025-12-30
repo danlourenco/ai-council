@@ -173,43 +173,66 @@
 				throw new Error(error || 'Failed to get council response');
 			}
 
-			const data = await response.json();
+			// Parse SSE stream
+			const reader = response.body?.getReader();
+			const decoder = new TextDecoder();
 
-			// Update conversation ID if this was a new conversation
-			if (data.conversationId && !currentConversationId) {
-				currentConversationId = data.conversationId;
-				replaceState(`/chat/${data.conversationId}`, {});
+			if (!reader) {
+				throw new Error('No response body');
 			}
 
-			// Update user message ID
-			if (data.userMessageId) {
-				userMessage.id = data.userMessageId;
-			}
+			let buffer = '';
 
-			// Add advisor responses to messages
-			if (data.synthesis?.rawAdvisorResponses) {
-				const advisorMessages: BrainTrustMessage[] = data.synthesis.rawAdvisorResponses.map(
-					(advisor: { advisorName: string; response: string }) => {
-						const persona = personas.find((p) => p.name === advisor.advisorName);
-						return {
-							id: `${data.userMessageId}-${advisor.advisorName}`,
-							role: 'advisor' as const,
-							content: advisor.response,
-							personaId: persona?.id
-						};
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const data = line.slice(6);
+
+						if (data === '[DONE]') {
+							brainTrustStatus = 'idle';
+							await invalidateAll();
+							continue;
+						}
+
+						try {
+							const event = JSON.parse(data);
+
+							if (event.type === 'metadata') {
+								if (event.conversationId && !currentConversationId) {
+									currentConversationId = event.conversationId;
+									replaceState(`/chat/${event.conversationId}`, {});
+								}
+								if (event.userMessageId) {
+									userMessage.id = event.userMessageId;
+								}
+							} else if (event.type === 'advisor-response') {
+								const advisor = event.advisor;
+								const persona = personas.find((p) => p.name === advisor.advisorName);
+								const advisorMessage: BrainTrustMessage = {
+									id: `${userMessage.id}-${advisor.advisorName}`,
+									role: 'advisor',
+									content: advisor.response,
+									personaId: persona?.id
+								};
+								brainTrustMessages = [...brainTrustMessages, advisorMessage];
+							} else if (event.type === 'synthesis') {
+								brainTrustSynthesis = event.synthesis;
+							} else if (event.type === 'error') {
+								throw new Error(event.error);
+							}
+						} catch (parseError) {
+							console.error('[ChatView] Failed to parse event:', parseError);
+						}
 					}
-				);
-
-				brainTrustMessages = [...brainTrustMessages, ...advisorMessages];
+				}
 			}
-
-			// Set synthesis
-			brainTrustSynthesis = data.synthesis;
-
-			brainTrustStatus = 'idle';
-
-			// Refresh sidebar to show new conversation
-			await invalidateAll();
 		} catch (error) {
 			brainTrustStatus = 'error';
 			brainTrustError = error instanceof Error ? error.message : 'Unknown error';

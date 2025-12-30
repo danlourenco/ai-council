@@ -69,66 +69,115 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 		);
 		console.log('[council] Saved user message:', userMessage.id);
 
-		// For now, use non-streaming approach until we properly implement streaming
-		// Streaming with ToolLoopAgent requires careful handling of the fullStream async iterator
-		console.log('[council] Starting agent execution (non-streaming for now)...');
-		const result = await agent.generate({ prompt: question });
+		// Stream agent execution with real-time progress
+		console.log('[council] Starting agent execution with streaming...');
 
-		console.log('[council] Agent finished, output:', !!result.output);
+		const encoder = new TextEncoder();
+		const stream = new ReadableStream({
+			async start(controller) {
+				try {
+					// Send metadata immediately
+					controller.enqueue(
+						encoder.encode(
+							`data: ${JSON.stringify({ type: 'metadata', conversationId: convId, userMessageId: userMessage.id })}\n\n`
+						)
+					);
 
-		// Save all advisor responses
-		if (result.output?.rawAdvisorResponses) {
-			for (const advisor of result.output.rawAdvisorResponses) {
-				const persona = personas.find((p) => p.name === advisor.advisorName);
-				await messageService.create(
-					{
-						conversationId: convId,
-						role: 'advisor',
-						content: advisor.response,
-						personaId: persona?.id,
-						parentMessageId: userMessage.id
-					},
-					locals.user!.id
-				);
-			}
-		}
+					// Execute agent with onStepFinish callback to capture tool results
+					const result = await agent.generate({
+						prompt: question,
+						onStepFinish: async (step) => {
+							console.log('[council] Step finished:', step.stepNumber);
 
-		// Save synthesis as JSON
-		if (result.output) {
-			await messageService.create(
-				{
-					conversationId: convId,
-					role: 'synthesis',
-					content: JSON.stringify({
-						pointsOfAgreement: result.output.pointsOfAgreement,
-						keyTensions: result.output.keyTensions,
-						recommendedNextSteps: result.output.recommendedNextSteps
-					}),
-					parentMessageId: userMessage.id,
-					modelId: 'claude-sonnet-4'
-				},
-				locals.user!.id
-			);
-		}
+							// Check for tool results in this step
+							if (step.toolResults && step.toolResults.length > 0) {
+								for (const toolResult of step.toolResults) {
+									if (toolResult.type === 'tool-result') {
+										const advisorResponse = toolResult.output as {
+											advisorId: string;
+											advisorName: string;
+											advisorRole: string;
+											response: string;
+										};
 
-		console.log('[council] Saved all responses to database');
+										console.log('[council] Advisor response:', advisorResponse.advisorName);
 
-		// Return the complete result as JSON
-		return new Response(
-			JSON.stringify({
-				conversationId: convId,
-				userMessageId: userMessage.id,
-				synthesis: result.output
-			}),
-			{
-				status: 200,
-				headers: {
-					'Content-Type': 'application/json',
-					'X-Conversation-Id': convId,
-					'X-User-Message-Id': userMessage.id
+										// Stream to client immediately
+										controller.enqueue(
+											encoder.encode(
+												`data: ${JSON.stringify({ type: 'advisor-response', advisor: advisorResponse })}\n\n`
+											)
+										);
+
+										// Save to database immediately
+										const persona = personas.find((p) => p.name === advisorResponse.advisorName);
+										await messageService.create(
+											{
+												conversationId: convId,
+												role: 'advisor',
+												content: advisorResponse.response,
+												personaId: persona?.id,
+												parentMessageId: userMessage.id
+											},
+											locals.user!.id
+										);
+									}
+								}
+							}
+						}
+					});
+
+					console.log('[council] Agent finished, output:', !!result.output);
+
+					// Save synthesis to database
+					if (result.output) {
+						await messageService.create(
+							{
+								conversationId: convId,
+								role: 'synthesis',
+								content: JSON.stringify({
+									pointsOfAgreement: result.output.pointsOfAgreement,
+									keyTensions: result.output.keyTensions,
+									recommendedNextSteps: result.output.recommendedNextSteps
+								}),
+								parentMessageId: userMessage.id,
+								modelId: 'claude-sonnet-4'
+							},
+							locals.user!.id
+						);
+
+						// Stream synthesis to client
+						controller.enqueue(
+							encoder.encode(
+								`data: ${JSON.stringify({ type: 'synthesis', synthesis: result.output })}\n\n`
+							)
+						);
+					}
+
+					// Send completion
+					controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+					controller.close();
+				} catch (error) {
+					console.error('[council] Stream error:', error);
+					const message = error instanceof Error ? error.message : 'Unknown error';
+					controller.enqueue(
+						encoder.encode(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`)
+					);
+					controller.close();
 				}
 			}
-		);
+		});
+
+		return new Response(stream, {
+			headers: {
+				'Content-Type': 'text/event-stream',
+				'Cache-Control': 'no-cache, no-transform',
+				'Connection': 'keep-alive',
+				'X-Accel-Buffering': 'no',
+				'X-Conversation-Id': convId,
+				'X-User-Message-Id': userMessage.id
+			}
+		});
 	} catch (error) {
 		console.error('[council] Error:', error);
 		const message = error instanceof Error ? error.message : 'Unknown error';
