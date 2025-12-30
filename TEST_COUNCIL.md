@@ -26,16 +26,19 @@ async function testCouncil() {
 
   const question = 'Should I lease or buy an electric vehicle?';
   console.log('Question:', question);
+  console.log('⏳ This will take ~30-60 seconds (agent runs 3 advisors sequentially)...\n');
 
   try {
+    const startTime = Date.now();
     const response = await fetch('/api/council', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question })
     });
 
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`✅ Response received in ${elapsed}s`);
     console.log('Status:', response.status);
-    console.log('Headers:', Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       const error = await response.text();
@@ -43,71 +46,52 @@ async function testCouncil() {
       return;
     }
 
-    // Parse streaming response
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let toolCalls = [];
-    let synthesis = null;
+    // Parse JSON response
+    const data = await response.json();
+    console.log('\n📦 Response data:', data);
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-        const jsonStr = trimmed.slice(6);
-        if (jsonStr === '[DONE]') {
-          console.log('✅ Stream completed');
-          continue;
-        }
-
-        try {
-          const event = JSON.parse(jsonStr);
-
-          if (event.type === 'tool-invocation') {
-            console.log(`🔧 ${event.toolName} called`);
-            toolCalls.push(event.toolName);
-          }
-
-          if (event.type === 'tool-result') {
-            console.log(`✅ ${event.toolName} completed`);
-            if (event.result?.response) {
-              console.log(`   Response preview: ${event.result.response.slice(0, 80)}...`);
-            }
-          }
-
-          if (event.type === 'output' && event.output) {
-            console.log('\n📊 Synthesis received!');
-            synthesis = event.output;
-          }
-        } catch (e) {}
-      }
-    }
+    const synthesis = data.synthesis;
 
     // Verify
     console.log('\n🔍 Verification:');
-    console.log('  Tools called:', toolCalls);
-    console.log('  Expected order:', toolCalls[0] === 'consultSage' &&
-                                      toolCalls[1] === 'consultSkeptic' &&
-                                      toolCalls[2] === 'consultStrategist');
+    console.log('  Conversation ID:', data.conversationId);
+    console.log('  User Message ID:', data.userMessageId);
     console.log('  Synthesis generated:', !!synthesis);
 
     if (synthesis) {
       console.log('\n📋 Synthesis summary:');
       console.log('  Points of agreement:', synthesis.pointsOfAgreement?.length || 0);
-      console.log('  Key tensions:', synthesis.keyTensions?.length || 0);
-      console.log('  Next steps:', synthesis.recommendedNextSteps?.length || 0);
-      console.log('  Raw responses:', synthesis.rawAdvisorResponses?.length || 0);
+      synthesis.pointsOfAgreement?.forEach((p, i) => {
+        console.log(`    ${i + 1}. ${p}`);
+      });
+
+      console.log('\n  Key tensions:', synthesis.keyTensions?.length || 0);
+      synthesis.keyTensions?.forEach((t, i) => {
+        console.log(`    ${i + 1}. ${t.topic}`);
+      });
+
+      console.log('\n  Next steps:', synthesis.recommendedNextSteps?.length || 0);
+      synthesis.recommendedNextSteps?.forEach((s, i) => {
+        console.log(`    ${i + 1}. ${s}`);
+      });
+
+      console.log('\n  Advisor responses:', synthesis.rawAdvisorResponses?.length || 0);
+      synthesis.rawAdvisorResponses?.forEach((a) => {
+        console.log(`    - ${a.advisorName}: ${a.response.slice(0, 60)}...`);
+      });
+
+      // Verify all three advisors responded
+      const advisorNames = synthesis.rawAdvisorResponses?.map(a => a.advisorName) || [];
+      const hasAllAdvisors =
+        advisorNames.includes('The Sage') &&
+        advisorNames.includes('The Skeptic') &&
+        advisorNames.includes('The Strategist');
+
+      console.log('\n  All advisors responded:', hasAllAdvisors ? '✅' : '❌');
     }
 
-    console.log('\n✅ Test completed!');
+    console.log('\n✅ Test completed successfully!');
+    console.log(`\n💡 View the conversation at: /chat/${data.conversationId}`);
 
   } catch (error) {
     console.error('❌ Test failed:', error);

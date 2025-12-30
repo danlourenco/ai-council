@@ -1,4 +1,3 @@
-import { createAgentUIStreamResponse } from 'ai';
 import { createCouncilAgent } from '$lib/server/ai/council-agent';
 import { PersonaService } from '$lib/server/services/personas';
 import { ConversationService } from '$lib/server/services/conversations';
@@ -70,56 +69,65 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 		);
 		console.log('[council] Saved user message:', userMessage.id);
 
-		// Create the streaming response with agent
-		return createAgentUIStreamResponse({
-			agent,
-			prompt: question,
-			headers: {
-				'X-Conversation-Id': convId,
-				'X-User-Message-Id': userMessage.id,
-				// Add streaming headers to prevent buffering
-				'Transfer-Encoding': 'chunked',
-				'Connection': 'keep-alive',
-				'Cache-Control': 'no-cache, no-transform',
-				'X-Accel-Buffering': 'no'
-			},
-			onFinish: async ({ output }) => {
-				console.log('[council] Agent finished, saving responses');
+		// Execute the agent (non-streaming for now, will stream in Phase 5)
+		console.log('[council] Starting agent execution...');
+		const result = await agent.generate({ prompt: question });
 
-				// Save all advisor responses
-				for (const advisor of output.rawAdvisorResponses) {
-					const persona = personas.find((p) => p.name === advisor.advisorName);
-					await messageService.create(
-						{
-							conversationId: convId,
-							role: 'advisor',
-							content: advisor.response,
-							personaId: persona?.id,
-							parentMessageId: userMessage.id
-						},
-						locals.user!.id
-					);
-				}
+		console.log('[council] Agent finished, output:', !!result.output);
 
-				// Save synthesis as JSON
+		// Save all advisor responses
+		if (result.output?.rawAdvisorResponses) {
+			for (const advisor of result.output.rawAdvisorResponses) {
+				const persona = personas.find((p) => p.name === advisor.advisorName);
 				await messageService.create(
 					{
 						conversationId: convId,
-						role: 'synthesis',
-						content: JSON.stringify({
-							pointsOfAgreement: output.pointsOfAgreement,
-							keyTensions: output.keyTensions,
-							recommendedNextSteps: output.recommendedNextSteps
-						}),
-						parentMessageId: userMessage.id,
-						modelId: 'claude-sonnet-4'
+						role: 'advisor',
+						content: advisor.response,
+						personaId: persona?.id,
+						parentMessageId: userMessage.id
 					},
 					locals.user!.id
 				);
-
-				console.log('[council] Saved all advisor responses and synthesis');
 			}
-		});
+		}
+
+		// Save synthesis as JSON
+		if (result.output) {
+			await messageService.create(
+				{
+					conversationId: convId,
+					role: 'synthesis',
+					content: JSON.stringify({
+						pointsOfAgreement: result.output.pointsOfAgreement,
+						keyTensions: result.output.keyTensions,
+						recommendedNextSteps: result.output.recommendedNextSteps
+					}),
+					parentMessageId: userMessage.id,
+					modelId: 'claude-sonnet-4'
+				},
+				locals.user!.id
+			);
+		}
+
+		console.log('[council] Saved all responses to database');
+
+		// Return the complete result as JSON
+		return new Response(
+			JSON.stringify({
+				conversationId: convId,
+				userMessageId: userMessage.id,
+				synthesis: result.output
+			}),
+			{
+				status: 200,
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Conversation-Id': convId,
+					'X-User-Message-Id': userMessage.id
+				}
+			}
+		);
 	} catch (error) {
 		console.error('[council] Error:', error);
 		const message = error instanceof Error ? error.message : 'Unknown error';
