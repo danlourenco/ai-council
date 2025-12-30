@@ -99,34 +99,51 @@ sequenceDiagram
     A->>DB: Save with critiqueOfMessageId
 ```
 
-### Brain Trust (Implemented)
+### Brain Trust (Implemented with AI SDK 6)
 
-Multiple advisors respond **sequentially** (not in parallel), enabling each advisor to see and respond to previous perspectives. This allows for debate, critique, and building on ideas.
+Multiple advisors respond **sequentially** (not in parallel), enabling each advisor to see and respond to previous perspectives. This is now implemented server-side using AI SDK 6's ToolLoopAgent.
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant BT as BrainTrust
-    participant A1 as Advisor 1
-    participant A2 as Advisor 2
-    participant S as Synthesizer
+    participant C as ChatView
+    participant E as /api/council
+    participant A as ToolLoopAgent
+    participant T1 as consultSage
+    participant T2 as consultSkeptic
+    participant T3 as consultStrategist
 
-    U->>BT: Question
+    U->>C: Submit question
+    C->>E: POST {question}
+    E->>A: Create agent & execute
 
-    Note over BT,A1: Advisor 1 sees only question
-    BT->>A1: Question
-    A1-->>BT: Response 1
+    Note over A,T1: Tool Call 1
+    A->>T1: {question}
+    T1-->>A: Sage's response
 
-    Note over BT,A2: Advisor 2 sees question + Response 1
-    BT->>A2: Question + Response 1
-    A2-->>BT: Response 2 (can reference/critique A1)
+    Note over A,T2: Tool Call 2
+    A->>T2: {question, priorResponses: [Sage]}
+    T2-->>A: Skeptic's response
 
-    Note over BT,S: Synthesizer sees all
-    BT->>S: All messages
-    S-->>BT: Points of Agreement, Tensions, Next Steps
+    Note over A,T3: Tool Call 3
+    A->>T3: {question, priorResponses: [Sage, Skeptic]}
+    T3-->>A: Strategist's response
 
-    BT-->>U: Complete conversation
+    Note over A: Generate structured synthesis
+    A->>A: Output.object(schema)
+
+    A-->>E: Complete result with synthesis
+    E->>E: Save to database
+    E-->>C: JSON response
+    C-->>U: Display all responses + synthesis
 ```
+
+**Key differences from previous client-side orchestration:**
+- Single API call to `/api/council` instead of multiple calls
+- Server-side agent guarantees sequential execution
+- Structured output with Zod schema validation
+- All responses returned as complete JSON (no streaming yet)
+- Simpler client implementation
 
 For detailed documentation on the Brain Trust architecture, see [Brain Trust](./brain-trust.md).
 

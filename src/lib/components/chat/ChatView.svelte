@@ -131,13 +131,16 @@
 					personaId: msg.personaId ?? undefined
 				}));
 
-			// Load synthesis if exists
+			// Load synthesis if exists (handle both old markdown and new JSON format)
 			const synthesisMsg = initialMessages.find((msg) => msg.role === 'synthesis');
 			if (synthesisMsg?.content) {
 				try {
+					// Try parsing as JSON first (new format)
 					brainTrustSynthesis = JSON.parse(synthesisMsg.content);
 				} catch (e) {
-					console.error('[ChatView] Failed to parse synthesis:', e);
+					// If JSON parse fails, it's an old markdown synthesis - ignore it
+					console.log('[ChatView] Skipping old markdown synthesis format');
+					brainTrustSynthesis = null;
 				}
 			}
 		}
@@ -393,6 +396,14 @@
 				<div class="flex flex-col items-center justify-center py-8 gap-3">
 					<span class="loading loading-spinner loading-lg"></span>
 					<p class="text-sm text-base-content/60">Consulting the council...</p>
+				</div>
+			{/if}
+
+			<!-- Error Display -->
+			{#if brainTrustStatus === 'error' && brainTrustError}
+				<div class="alert alert-error">
+					<svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+					<span>{brainTrustError}</span>
 				</div>
 			{/if}
 

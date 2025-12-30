@@ -1,4 +1,4 @@
-# Brain Trust - Multi-Advisor Orchestration
+# Brain Trust - Multi-Advisor Orchestration with AI SDK 6
 
 The Brain Trust feature enables consulting multiple AI advisors sequentially on a single question, with each advisor able to see and respond to previous advisors' perspectives. A synthesis is automatically generated after all advisors complete.
 
@@ -10,20 +10,22 @@ flowchart LR
         Q[User Question]
     end
 
-    subgraph "Sequential Advisor Responses"
-        A1[Advisor 1]
-        A2[Advisor 2]
-        A3[Advisor N]
+    subgraph "Server-Side ToolLoopAgent"
+        A1[consultSage Tool]
+        A2[consultSkeptic Tool]
+        A3[consultStrategist Tool]
+        S[Structured Output]
     end
 
     subgraph Output
-        S[Synthesis]
+        JSON[Complete JSON Response]
     end
 
     Q --> A1
     A1 -->|"Question + Response 1"| A2
     A2 -->|"Question + Responses 1-2"| A3
     A3 --> S
+    S --> JSON
 ```
 
 ## Key Design Decision: Sequential Context Sharing
@@ -37,376 +39,328 @@ Advisors respond **sequentially**, not in parallel. This enables:
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant BT as BrainTrust
-    participant A1 as Advisor 1<br/>(The Sage)
-    participant A2 as Advisor 2<br/>(The Skeptic)
-    participant A3 as Advisor 3<br/>(The Strategist)
-    participant S as Synthesizer
+    participant C as Client
+    participant E as /api/council
+    participant A as ToolLoopAgent
+    participant S1 as consultSage
+    participant S2 as consultSkeptic
+    participant S3 as consultStrategist
 
-    U->>BT: "Should I quit my job to start a company?"
+    C->>E: POST {question}
+    E->>A: Create agent with tools
 
-    Note over BT,A1: Round 1: First Advisor
-    BT->>A1: Question only
-    A1-->>BT: "Consider your runway..."
+    Note over A,S1: Tool Call 1
+    A->>S1: {question}
+    S1-->>A: Sage's response
 
-    Note over BT,A2: Round 2: Second Advisor sees Round 1
-    BT->>A2: Question + Sage's response
-    A2-->>BT: "The Sage is too optimistic..."
+    Note over A,S2: Tool Call 2
+    A->>S2: {question, priorResponses: [Sage]}
+    S2-->>A: Skeptic's response
 
-    Note over BT,A3: Round 3: Third Advisor sees Rounds 1-2
-    BT->>A3: Question + Sage + Skeptic responses
-    A3-->>BT: "Here's a framework to decide..."
+    Note over A,S3: Tool Call 3
+    A->>S3: {question, priorResponses: [Sage, Skeptic]}
+    S3-->>A: Strategist's response
 
-    Note over BT,S: Synthesis: Sees all responses
-    BT->>S: All messages
-    S-->>BT: Points of Agreement, Tensions, Next Steps
-
-    BT-->>U: Complete conversation
+    Note over A: Generate Synthesis
+    A->>A: Output.object(schema)
+    A-->>E: Structured result
+    E-->>C: JSON with synthesis
 ```
 
-## Architecture
+## Architecture (AI SDK 6)
 
-### Package Structure
+### Server-Side Orchestration
 
-The Brain Trust is implemented as a self-contained, potentially publishable package:
-
-```
-src/lib/brain-trust/
-├── index.ts                    # Public API exports
-├── brain-trust.svelte.ts       # Core state machine (Svelte 5 runes)
-├── types.ts                    # TypeScript interfaces
-└── stream-parser.ts            # SSE stream parsing utilities
-```
-
-### Class Diagram
-
-```mermaid
-classDiagram
-    class BrainTrust {
-        +Message[] messages
-        +BrainTrustStatus status
-        +number currentAdvisorIndex
-        +string streamingContent
-        +string|null streamingAdvisorId
-        +string synthesisContent
-        +string|null error
-
-        +start(question, advisors) Promise~void~
-        +abort() void
-        +reset() void
-
-        -queryAdvisor(advisor) Promise~void~
-        -synthesize() Promise~void~
-    }
-
-    class BrainTrustConfig {
-        +fetchAdvisor(advisor, messages) Promise~Response~
-        +fetchSynthesis(messages) Promise~Response~
-        +parseStream(response) AsyncGenerator~string~
-        +onAdvisorComplete?(advisor, message) void
-        +onSynthesisComplete?(synthesis) void
-        +onError?(error, phase, advisor?) void
-    }
-
-    class Advisor {
-        +string id
-        +string name
-        +string? systemPrompt
-        +string? modelId
-    }
-
-    class Message {
-        +string id
-        +Role role
-        +string content
-        +string? advisorId
-    }
-
-    BrainTrust --> BrainTrustConfig : uses
-    BrainTrust --> Advisor : queries
-    BrainTrust --> Message : manages
-```
-
-### State Machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> idle
-
-    idle --> querying: start()
-
-    querying --> querying: next advisor
-    querying --> synthesizing: all advisors complete
-    querying --> error: advisor fails
-    querying --> idle: abort()
-
-    synthesizing --> complete: synthesis done
-    synthesizing --> error: synthesis fails
-    synthesizing --> idle: abort()
-
-    complete --> idle: reset()
-    error --> idle: reset()
-```
-
-## API Endpoints
-
-### POST /api/chat (Brain Trust Mode)
-
-Used for each advisor query. In Brain Trust mode, includes `mode` and `parentMessageId` fields.
-
-**Request:**
-```json
-{
-  "personaId": "persona_sage",
-  "conversationId": "conv_xyz789",
-  "mode": "brain-trust",
-  "parentMessageId": "msg_user123",
-  "messages": [
-    { "role": "user", "content": "Should I quit my job?" },
-    { "role": "assistant", "content": "Previous advisor response..." }
-  ]
-}
-```
-
-**Response Headers:**
-- `X-Conversation-Id`: The conversation ID (created on first request)
-- `X-User-Message-Id`: The database ID of the saved user message
-
-**Response Body:** Server-Sent Events (SSE) stream
-
-### POST /api/chat/synthesis
-
-Generates a synthesis of all advisor responses.
-
-**Request:**
-```json
-{
-  "conversationId": "conv_xyz789",
-  "userQuestionId": "msg_user123"
-}
-```
-
-**Response Body:** SSE stream with synthesis content
-
-### Brain Trust System Prompt Addendum
-
-In Brain Trust mode, each advisor's system prompt is automatically enhanced with instructions to engage with other advisors' perspectives:
+The Brain Trust is now implemented entirely server-side using AI SDK 6's ToolLoopAgent. This replaces the previous client-side BrainTrust class.
 
 ```
-IMPORTANT: You are participating in a "Brain Trust" discussion with other advisors.
-If you see responses from other advisors in the conversation:
-- Acknowledge their perspectives where relevant
-- Offer your unique viewpoint that adds to or contrasts with what's been said
-- Don't simply repeat what others have already covered
-- Feel free to respectfully disagree or challenge other advisors' positions
-- Build on good ideas from others while adding your own expertise
+src/lib/server/ai/
+├── providers.ts              # Model configuration with DevTools
+├── advisor-tools.ts          # Tool wrappers for each advisor
+└── council-agent.ts          # ToolLoopAgent configuration
 ```
 
-This ensures advisors don't just repeat each other but actively engage in debate and critique.
-
-### Synthesis System Prompt
-
-The synthesizer uses a dedicated prompt to create structured output:
-
-```
-You are the Council Synthesizer, responsible for distilling insights
-from multiple advisors.
-
-Given responses from different advisors, create a synthesis with these sections:
-
-## Points of Agreement
-Where advisors align in perspectives or recommendations.
-
-## Key Tensions
-Where advisors disagree. Explain tensions without artificially resolving them.
-
-## Recommended Next Steps
-Concrete actions accounting for different perspectives.
-
-Guidelines:
-- Be concise but comprehensive
-- Don't favor any single advisor
-- Acknowledge uncertainty
-- Focus on actionable insights
-```
-
-## Data Flow
+### ToolLoopAgent Flow
 
 ```mermaid
 flowchart TB
-    subgraph Client
-        CV[ChatView.svelte]
-        BT[BrainTrust Class]
-        SP[Stream Parser]
+    subgraph "/api/council Endpoint"
+        REQ[Request Handler]
     end
 
-    subgraph "API Layer"
-        CA[/api/chat]
-        SA[/api/chat/synthesis]
+    subgraph "ToolLoopAgent"
+        AGENT[Agent Instance]
+        INST[Instructions]
+        TOOLS[Tools Registry]
+        OUTPUT[Output Schema]
     end
 
-    subgraph Services
-        PS[PersonaService]
-        MS[MessageService]
-        CS[ConversationService]
+    subgraph "Advisor Tools"
+        T1[consultSage]
+        T2[consultSkeptic]
+        T3[consultStrategist]
     end
 
-    subgraph "AI Providers"
-        LLM1[Claude]
+    subgraph "LLM Providers"
+        LLM1[Claude Sonnet 4]
         LLM2[GPT-4o]
-        LLM3[Gemini]
+        LLM3[Gemini 2.0 Flash]
     end
 
     subgraph Database
         D1[(D1)]
     end
 
-    CV -->|"1. start(question, advisors)"| BT
-    BT -->|"2. fetchAdvisor()"| CA
-    CA -->|"3. Get persona"| PS
-    CA -->|"4. Save user msg"| MS
-    CA -->|"5. streamText()"| LLM1
-    LLM1 -->|"6. SSE stream"| CA
-    CA -->|"7. Save advisor msg"| MS
-    CA -->|"8. Stream"| SP
-    SP -->|"9. Chunks"| BT
+    REQ --> AGENT
+    AGENT --> INST
+    AGENT --> TOOLS
+    AGENT --> OUTPUT
 
-    BT -->|"10. Repeat for each advisor"| CA
+    TOOLS --> T1
+    TOOLS --> T2
+    TOOLS --> T3
 
-    BT -->|"11. fetchSynthesis()"| SA
-    SA -->|"12. getByParentId()"| MS
-    SA -->|"13. streamText()"| LLM1
-    SA -->|"14. Save synthesis"| MS
-    SA -->|"15. Stream"| SP
+    T1 --> LLM1
+    T2 --> LLM2
+    T3 --> LLM3
 
-    PS --> D1
-    MS --> D1
-    CS --> D1
+    AGENT --> D1
 ```
 
-## Usage Example
+## Implementation
 
-### Basic Usage
+### 1. Advisor Tools (`src/lib/server/ai/advisor-tools.ts`)
 
-```svelte
-<script lang="ts">
-  import { BrainTrust, parseAISDKStream } from '$lib/brain-trust';
-  import type { Advisor } from '$lib/brain-trust';
-
-  const brainTrust = new BrainTrust({
-    fetchAdvisor: async (advisor, messages) => {
-      return fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          personaId: advisor.id,
-          messages: messages.map(m => ({
-            role: m.role === 'advisor' ? 'assistant' : m.role,
-            content: m.content
-          })),
-          mode: 'brain-trust'
-        })
-      });
-    },
-    fetchSynthesis: async (messages) => {
-      return fetch('/api/chat/synthesis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: currentConversationId,
-          userQuestionId: messages[0].id
-        })
-      });
-    },
-    parseStream: parseAISDKStream
-  });
-
-  const advisors: Advisor[] = [
-    { id: '1', name: 'The Sage' },
-    { id: '2', name: 'The Skeptic' },
-    { id: '3', name: 'The Strategist' }
-  ];
-
-  async function askQuestion() {
-    await brainTrust.start('Should I quit my job?', advisors);
-  }
-</script>
-
-<!-- Completed messages -->
-{#each brainTrust.messages as message}
-  {#if message.role === 'user'}
-    <UserBubble content={message.content} />
-  {:else if message.role === 'advisor'}
-    <AdvisorCard advisorId={message.advisorId} content={message.content} />
-  {/if}
-{/each}
-
-<!-- Currently streaming advisor -->
-{#if brainTrust.streamingAdvisorId}
-  <AdvisorCard
-    advisorId={brainTrust.streamingAdvisorId}
-    content={brainTrust.streamingContent}
-    isStreaming={true}
-  />
-{/if}
-
-<!-- Synthesis -->
-{#if brainTrust.synthesisContent}
-  <SynthesisCard
-    content={brainTrust.synthesisContent}
-    isStreaming={brainTrust.status === 'synthesizing'}
-  />
-{/if}
-
-<!-- Progress indicator -->
-{#if brainTrust.isActive}
-  <Progress
-    current={brainTrust.progress.current}
-    total={brainTrust.progress.total}
-    phase={brainTrust.progress.phase}
-  />
-{/if}
-```
-
-### Reactive State Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `messages` | `Message[]` | All completed messages (user + advisor) |
-| `status` | `BrainTrustStatus` | Current phase: `idle`, `querying`, `synthesizing`, `complete`, `error` |
-| `currentAdvisorIndex` | `number` | Index of current advisor (0-based) |
-| `streamingContent` | `string` | Content being streamed from current advisor |
-| `streamingAdvisorId` | `string \| null` | ID of advisor currently streaming |
-| `synthesisContent` | `string` | Accumulated synthesis content |
-| `error` | `string \| null` | Error message if status is `error` |
-
-### Computed Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `currentAdvisor` | `Advisor \| null` | The currently active advisor |
-| `isComplete` | `boolean` | True if status is `complete` or `error` |
-| `isActive` | `boolean` | True if status is `querying` or `synthesizing` |
-| `progress` | `BrainTrustProgress` | Progress info for UI display |
-| `completedAdvisors` | `Advisor[]` | Advisors that have finished responding |
-
-## Stream Parsing
-
-The `parseAISDKStream` function handles the Vercel AI SDK v5 SSE format:
+Each persona is wrapped as a tool that the agent can invoke:
 
 ```typescript
-// SSE format from AI SDK
-data: {"type": "text-delta", "delta": "Hello"}
-data: {"type": "text-delta", "delta": " world"}
-data: {"type": "finish", ...}
-data: [DONE]
+import { tool, generateText } from 'ai';
+import { z } from 'zod';
+import { getModel } from './providers';
+import type { Persona } from '$lib/server/db/schema';
 
-// parseAISDKStream yields text chunks
-for await (const chunk of parseAISDKStream(response)) {
-  console.log(chunk); // "Hello", " world"
+export function createAdvisorTool(persona: Persona, env: Record<string, string>) {
+  return tool({
+    description: `Consult ${persona.name} (${persona.role})`,
+    inputSchema: z.object({
+      question: z.string().describe('The user question to address'),
+      priorResponses: z
+        .array(z.object({
+          advisorName: z.string(),
+          advisorRole: z.string(),
+          response: z.string()
+        }))
+        .optional()
+        .describe('Responses from advisors consulted before this one')
+    }),
+    execute: async ({ question, priorResponses }) => {
+      const model = getModel(persona.defaultModelId, env);
+
+      // Build context with prior responses
+      let contextPrompt = `User Question: ${question}`;
+      if (priorResponses?.length) {
+        contextPrompt += '\n\nPrior Advisor Responses:\n';
+        for (const prior of priorResponses) {
+          contextPrompt += `\n### ${prior.advisorName} (${prior.advisorRole})\n${prior.response}\n`;
+        }
+      }
+
+      const result = await generateText({
+        model,
+        system: persona.systemPrompt,
+        prompt: contextPrompt
+      });
+
+      return {
+        advisorId: persona.id,
+        advisorName: persona.name,
+        advisorRole: persona.role,
+        response: result.text
+      };
+    }
+  });
 }
 ```
+
+### 2. Council Agent (`src/lib/server/ai/council-agent.ts`)
+
+The ToolLoopAgent orchestrates the three advisors and generates structured output:
+
+```typescript
+import { ToolLoopAgent, Output } from 'ai';
+import { z } from 'zod';
+import { createAdvisorTool } from './advisor-tools';
+import { getModel, SYNTHESIS_MODEL_ID } from './providers';
+import type { Persona } from '$lib/server/db/schema';
+
+const synthesisSchema = z.object({
+  pointsOfAgreement: z.array(z.string()),
+  keyTensions: z.array(z.object({
+    topic: z.string(),
+    sagePosition: z.string().optional(),
+    skepticPosition: z.string().optional(),
+    strategistPosition: z.string().optional()
+  })),
+  recommendedNextSteps: z.array(z.string()),
+  rawAdvisorResponses: z.array(z.object({
+    advisorName: z.string(),
+    response: z.string()
+  }))
+});
+
+export function createCouncilAgent(personas: Persona[], env: Record<string, string>) {
+  const sage = personas.find((p) => p.name === 'The Sage');
+  const skeptic = personas.find((p) => p.name === 'The Skeptic');
+  const strategist = personas.find((p) => p.name === 'The Strategist');
+
+  if (!sage || !skeptic || !strategist) {
+    throw new Error('Missing required personas');
+  }
+
+  return new ToolLoopAgent({
+    model: getModel(SYNTHESIS_MODEL_ID, env),
+    instructions: `You are the Council Orchestrator. For each user question, you MUST:
+
+1. Call consultSage with just the user question
+2. Call consultSkeptic with the question AND The Sage's response
+3. Call consultStrategist with the question AND both prior responses
+4. After all three advisors respond, synthesize into the structured output
+
+CRITICAL: Always call advisors in this exact order. Each subsequent advisor must receive all prior responses.`,
+    tools: {
+      consultSage: createAdvisorTool(sage, env),
+      consultSkeptic: createAdvisorTool(skeptic, env),
+      consultStrategist: createAdvisorTool(strategist, env)
+    },
+    output: Output.object({ schema: synthesisSchema })
+  });
+}
+```
+
+### 3. API Endpoint (`src/routes/api/council/+server.ts`)
+
+The endpoint creates the agent and executes it synchronously:
+
+```typescript
+import { createCouncilAgent } from '$lib/server/ai/council-agent';
+import { PersonaService } from '$lib/server/services/personas';
+import { ConversationService } from '$lib/server/services/conversations';
+import { MessageService } from '$lib/server/services/messages';
+
+export const POST: RequestHandler = async ({ request, locals, platform }) => {
+  if (!locals.user) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  const { question, conversationId } = await request.json();
+
+  const personaService = new PersonaService(locals.db);
+  const conversationService = new ConversationService(locals.db);
+  const messageService = new MessageService(locals.db);
+
+  // Get default personas
+  const personas = await personaService.getDefaults();
+
+  // Create agent
+  const agent = createCouncilAgent(personas, {
+    ANTHROPIC_API_KEY: platform?.env?.ANTHROPIC_API_KEY ?? '',
+    OPENAI_API_KEY: platform?.env?.OPENAI_API_KEY ?? '',
+    GOOGLE_AI_API_KEY: platform?.env?.GOOGLE_AI_API_KEY ?? ''
+  });
+
+  // Execute agent
+  const result = await agent.generate({ prompt: question });
+
+  // Save to database...
+  // Return complete result as JSON
+  return new Response(JSON.stringify({
+    conversationId,
+    userMessageId,
+    synthesis: result.output
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  });
+};
+```
+
+## Structured Output Schema
+
+The ToolLoopAgent uses Zod to define a structured output schema:
+
+```typescript
+{
+  pointsOfAgreement: string[];  // Where advisors align
+
+  keyTensions: Array<{          // Where advisors disagree
+    topic: string;
+    sagePosition?: string;
+    skepticPosition?: string;
+    strategistPosition?: string;
+  }>;
+
+  recommendedNextSteps: string[];  // Actionable guidance
+
+  rawAdvisorResponses: Array<{     // Full advisor responses
+    advisorName: string;
+    response: string;
+  }>;
+}
+```
+
+## Client Integration
+
+The client simply calls the endpoint and displays the results:
+
+```typescript
+async function startCouncilSession(question: string) {
+  const response = await fetch('/api/council', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question })
+  });
+
+  const data = await response.json();
+
+  // Display advisor responses
+  for (const advisor of data.synthesis.rawAdvisorResponses) {
+    displayAdvisorCard(advisor.advisorName, advisor.response);
+  }
+
+  // Display synthesis
+  displaySynthesis(data.synthesis);
+}
+```
+
+## DevTools Integration
+
+In development mode, all model calls are automatically wrapped with DevTools middleware:
+
+```typescript
+// src/lib/server/ai/providers.ts
+import { wrapLanguageModel } from 'ai';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
+import { dev } from '$app/environment';
+
+export function getModel(modelId: string, env: Record<string, string>) {
+  const model = modelFactory(env);
+
+  if (dev) {
+    return wrapLanguageModel({
+      model,
+      middleware: devToolsMiddleware()
+    });
+  }
+
+  return model;
+}
+```
+
+**To use DevTools:**
+1. Run `npx @ai-sdk/devtools` in a separate terminal
+2. Open http://localhost:4983
+3. Make a council request
+4. View all tool calls, inputs, outputs, and token usage
 
 ## Database Schema
 
@@ -418,13 +372,6 @@ erDiagram
     MESSAGE ||--o{ MESSAGE : "parentMessageId"
     PERSONA ||--o{ MESSAGE : creates
 
-    CONVERSATION {
-        string id PK
-        string title
-        string mode "quick|second-opinion|brain-trust"
-        string createdBy FK
-    }
-
     MESSAGE {
         string id PK
         string conversationId FK
@@ -432,82 +379,100 @@ erDiagram
         string content
         string personaId FK "nullable"
         string parentMessageId FK "nullable"
-        string modelId "nullable"
-        json metadata "nullable"
-    }
-
-    PERSONA {
-        string id PK
-        string name
-        string systemPrompt
-        string defaultModelId
     }
 ```
 
-### Message Linking
-
-For a Brain Trust conversation with 3 advisors:
+For a Brain Trust conversation:
 
 ```
 User Question (id: msg_q1)
-├── Advisor 1 Response (parentMessageId: msg_q1)
-├── Advisor 2 Response (parentMessageId: msg_q1)
-├── Advisor 3 Response (parentMessageId: msg_q1)
-└── Synthesis (parentMessageId: msg_q1)
+├── Advisor 1 Response (parentMessageId: msg_q1, personaId: sage)
+├── Advisor 2 Response (parentMessageId: msg_q1, personaId: skeptic)
+├── Advisor 3 Response (parentMessageId: msg_q1, personaId: strategist)
+└── Synthesis (parentMessageId: msg_q1, role: synthesis, content: JSON)
 ```
 
-The synthesis endpoint uses `getByParentId(userQuestionId)` to fetch all advisor responses.
+## Benefits Over Client-Side Orchestration
 
-## Error Handling
+### Before (Client-Side BrainTrust Class)
+- ❌ Complex state management in client
+- ❌ Manual stream parsing
+- ❌ Race conditions possible
+- ❌ Multiple API calls (3+ requests)
+- ❌ Error recovery complex
 
-```mermaid
-flowchart TD
-    A[Start Brain Trust] --> B{Advisors >= 2?}
-    B -->|No| C[Throw Error]
-    B -->|Yes| D[Query Advisor 1]
+### After (Server-Side ToolLoopAgent)
+- ✅ Agent handles orchestration
+- ✅ Guaranteed sequential execution
+- ✅ Type-safe structured output
+- ✅ Single API call
+- ✅ Built-in error handling
+- ✅ DevTools integration
 
-    D --> E{Response OK?}
-    E -->|No| F[Set error state]
-    E -->|Yes| G{More advisors?}
+## Testing
 
-    G -->|Yes| H[Query next advisor]
-    H --> E
+### Browser Console Test
 
-    G -->|No| I[Start Synthesis]
-    I --> J{Synthesis OK?}
-    J -->|No| F
-    J -->|Yes| K[Complete]
+```javascript
+async function testCouncil() {
+  const response = await fetch('/api/council', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      question: 'Should I lease or buy an electric vehicle?'
+    })
+  });
 
-    F --> L[Status: error]
-    K --> M[Status: complete]
+  const data = await response.json();
+  console.log('Synthesis:', data.synthesis);
+}
 
-    style F fill:#f96
-    style K fill:#9f9
+testCouncil();
 ```
 
-### Error Recovery
+### Expected Output
 
-- Individual advisor errors abort the entire flow
-- The `abort()` method can be called to stop mid-flow
-- `reset()` clears all state for a fresh start
-- Error callbacks via `onError` config option
-
-## Testing Checklist
-
-- [ ] Quick mode still works with Chat class
-- [ ] Brain Trust: First advisor response streams and displays
-- [ ] Brain Trust: Second advisor response streams and displays
-- [ ] Brain Trust: Second advisor can reference first advisor's points
-- [ ] Brain Trust: All completed responses visible without refresh
-- [ ] Brain Trust: Synthesis streams and displays after all advisors
-- [ ] Brain Trust: Error handling shows errors inline
-- [ ] Brain Trust: Abort mid-flow works correctly
-- [ ] Refresh page mid-conversation loads correctly
+```javascript
+{
+  conversationId: "conv_xyz",
+  userMessageId: "msg_123",
+  synthesis: {
+    pointsOfAgreement: [
+      "Electric vehicles offer significant long-term savings",
+      "Environmental impact is measurably positive"
+    ],
+    keyTensions: [
+      {
+        topic: "Financial approach",
+        sagePosition: "Consider both options based on lifestyle",
+        skepticPosition: "Leasing locks you into constant payments",
+        strategistPosition: "Run TCO analysis for 5-year horizon"
+      }
+    ],
+    recommendedNextSteps: [
+      "Calculate total cost of ownership for both options",
+      "Evaluate your driving patterns and annual mileage",
+      "Consider resale value trends for EVs"
+    ],
+    rawAdvisorResponses: [
+      { advisorName: "The Sage", response: "..." },
+      { advisorName: "The Skeptic", response: "..." },
+      { advisorName: "The Strategist", response: "..." }
+    ]
+  }
+}
+```
 
 ## Future Enhancements
 
-1. **Parallel Mode**: Option to query advisors in parallel (loses context sharing)
-2. **Selective Synthesis**: Choose which advisors to include in synthesis
-3. **Custom Synthesis Prompts**: User-defined synthesis instructions
-4. **Advisor Ordering**: Drag-and-drop to reorder advisors
-5. **Conversation Branching**: Ask follow-up questions to specific advisors
+1. **Streaming Support**: Stream advisor responses as they complete (Phase 5 of migration)
+2. **Custom Advisor Selection**: Allow users to select which advisors to consult
+3. **Follow-up Questions**: Ask specific advisors for clarification
+4. **Conversation Branching**: Explore alternative perspectives
+5. **Synthesis Customization**: User-defined synthesis prompts
+
+## References
+
+- [AI SDK 6 Agents Documentation](https://vercel.com/blog/ai-sdk-6#agents)
+- [ToolLoopAgent API](https://sdk.vercel.ai/docs/ai-sdk-core/toolloopagent)
+- [Structured Output](https://sdk.vercel.ai/docs/ai-sdk-core/structured-output)

@@ -235,60 +235,81 @@ d:{"finishReason":"stop","usage":{"promptTokens":150,"completionTokens":500}}
 | `d:` | Data | Finish metadata |
 | `e:` | Error | Error message |
 
-### Send Message (Brain Trust Mode)
+### Council Session (Brain Trust Mode)
 
-In Brain Trust mode, advisors are queried sequentially. Each advisor sees previous responses.
+In Brain Trust mode, all three default advisors (The Sage, The Skeptic, The Strategist) are consulted via a unified endpoint. The server-side ToolLoopAgent orchestrates sequential advisor calls and generates a structured synthesis.
 
 ```http
-POST /api/chat
+POST /api/council
 Content-Type: application/json
 
 {
-  "messages": [
-    { "role": "user", "content": "Should I quit my job?" },
-    { "role": "assistant", "content": "Previous advisor's response..." }
-  ],
-  "personaId": "persona_skeptic",
-  "conversationId": "conv_xyz789",
-  "mode": "brain-trust",
-  "parentMessageId": "msg_user123"
+  "question": "Should I quit my job to start a company?",
+  "conversationId": "conv_xyz789"  // Optional - creates new if not provided
 }
 ```
 
-**Additional Request Fields**:
-- `mode`: Set to `"brain-trust"` for Brain Trust flow
-- `parentMessageId`: The database ID of the user message (links all advisor responses)
+**Request Fields**:
+- `question`: The user's question (required)
+- `conversationId`: ID of existing conversation (optional - creates new conversation if omitted)
 
-**Additional Response Headers**:
-- `X-User-Message-Id`: Database ID of the saved user message (only on first advisor call)
+**Response Headers**:
+- `Content-Type: application/json`
+- `X-Conversation-Id`: The conversation ID (created or existing)
+- `X-User-Message-Id`: Database ID of the saved user message
 
-### Generate Synthesis
-
-After all advisors respond, generate a synthesis of their perspectives.
-
-```http
-POST /api/chat/synthesis
-Content-Type: application/json
-
+**Response Body** (JSON):
+```json
 {
   "conversationId": "conv_xyz789",
-  "userQuestionId": "msg_user123"
+  "userMessageId": "msg_user123",
+  "synthesis": {
+    "pointsOfAgreement": [
+      "All advisors agree that financial runway is critical",
+      "Market timing plays a significant role"
+    ],
+    "keyTensions": [
+      {
+        "topic": "Risk tolerance",
+        "sagePosition": "Balance opportunity with security",
+        "skepticPosition": "Most startups fail - quantify your downside",
+        "strategistPosition": "Create a decision framework with clear milestones"
+      }
+    ],
+    "recommendedNextSteps": [
+      "Calculate 12-18 month runway requirements",
+      "Define success/failure criteria",
+      "Set a decision deadline"
+    ],
+    "rawAdvisorResponses": [
+      {
+        "advisorName": "The Sage",
+        "response": "Starting a company is a profound decision..."
+      },
+      {
+        "advisorName": "The Skeptic",
+        "response": "Let me challenge some assumptions..."
+      },
+      {
+        "advisorName": "The Strategist",
+        "response": "Here's a framework to evaluate this decision..."
+      }
+    ]
+  }
 }
 ```
 
-**Response**: Server-Sent Events stream with synthesis content
+**How it works**:
+1. Server-side AI SDK 6 ToolLoopAgent receives the question
+2. Agent sequentially calls three tools (one per advisor):
+   - `consultSage` - receives only the question
+   - `consultSkeptic` - receives question + Sage's response
+   - `consultStrategist` - receives question + both prior responses
+3. Agent generates structured synthesis using Output.object()
+4. All responses and synthesis are saved to database
+5. Complete results returned as JSON
 
-**Stream format** (Vercel AI SDK UI Message Stream):
-```
-data: {"type":"text-delta","delta":"## Points"}
-data: {"type":"text-delta","delta":" of Agreement"}
-data: {"type":"finish",...}
-```
-
-The synthesis includes:
-- **Points of Agreement**: Where advisors align
-- **Key Tensions**: Where advisors disagree
-- **Recommended Next Steps**: Actionable guidance
+**Note**: This endpoint does not stream. The agent executes all steps server-side and returns the complete result. Streaming support may be added in a future update.
 
 ---
 

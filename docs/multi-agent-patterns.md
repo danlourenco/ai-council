@@ -29,114 +29,140 @@ The "Brain Trust" feature in The Council requires multiple AI advisors (using di
 
 ## Our Implementation: Brain Trust
 
-We implemented manual orchestration using the Vercel AI SDK's `streamText` function.
+We now use AI SDK 6's **ToolLoopAgent** for server-side orchestration, replacing the previous client-side manual orchestration.
 
-### Architecture
+### Architecture (AI SDK 6)
 
 ```
 User Question
      │
      ▼
-┌─────────────┐
-│ Orchestrator │ (ChatView.svelte)
-└─────────────┘
-     │
-     ├──► Advisor 1 (Claude) ──► Response 1
-     │
-     ├──► Advisor 2 (GPT-4o) ──► Response 2
-     │
-     ├──► Advisor 3 (Gemini) ──► Response 3
+┌─────────────────────┐
+│  /api/council       │
+│  Endpoint           │
+└─────────────────────┘
      │
      ▼
-┌─────────────┐
-│  Synthesis  │ (Claude Sonnet)
-└─────────────┘
+┌─────────────────────┐
+│  ToolLoopAgent      │
+│  (Server-Side)      │
+└─────────────────────┘
+     │
+     ├──► consultSage tool ──► Advisor 1 (Claude)
+     │
+     ├──► consultSkeptic tool ──► Advisor 2 (GPT-4o)
+     │
+     ├──► consultStrategist tool ──► Advisor 3 (Gemini)
      │
      ▼
-  Final Output
+┌─────────────────────┐
+│  Structured Output  │
+│  (Zod Schema)       │
+└─────────────────────┘
+     │
+     ▼
+  JSON Response
 ```
 
 ### Implementation Details
 
-**Client-side orchestration** (`src/lib/components/chat/ChatView.svelte`):
+**Server-side agent** (`src/lib/server/ai/council-agent.ts`):
 
 ```typescript
-interface BrainTrustState {
-  isActive: boolean;
-  currentQuestionId: string | null;
-  currentQuestionText: string;
-  personaQueue: string[];        // Ordered list of advisor IDs
-  currentIndex: number;          // Current advisor being queried
-  completedResponses: Array<{
-    personaId: string;
-    messageId: string;
-    content: string;
-  }>;
-  synthesisContent: string;
-  synthesisStreaming: boolean;
-  error: string | null;
+export function createCouncilAgent(personas: Persona[], env: Record<string, string>) {
+  return new ToolLoopAgent({
+    model: getModel(SYNTHESIS_MODEL_ID, env),
+    instructions: `You are the Council Orchestrator. For each user question:
+1. Call consultSage with just the user question
+2. Call consultSkeptic with the question AND The Sage's response
+3. Call consultStrategist with the question AND both prior responses
+4. After all three advisors respond, synthesize into structured output`,
+    tools: {
+      consultSage: createAdvisorTool(sage, env),
+      consultSkeptic: createAdvisorTool(skeptic, env),
+      consultStrategist: createAdvisorTool(strategist, env)
+    },
+    output: Output.object({ schema: synthesisSchema })
+  });
 }
 ```
 
-**Sequential flow:**
+**Advisor tools** (`src/lib/server/ai/advisor-tools.ts`):
 
 ```typescript
-async function startBrainTrustFlow(questionText: string) {
-  // Add user message to UI
-  // ...
+export function createAdvisorTool(persona: Persona, env: Record<string, string>) {
+  return tool({
+    description: `Consult ${persona.name} (${persona.role})`,
+    inputSchema: z.object({
+      question: z.string(),
+      priorResponses: z.array(priorResponseSchema).optional()
+    }),
+    execute: async ({ question, priorResponses }) => {
+      const model = getModel(persona.defaultModelId, env);
 
-  // Query each advisor sequentially
-  for (let i = 0; i < brainTrust.personaQueue.length; i++) {
-    brainTrust.currentIndex = i;
-    const personaId = brainTrust.personaQueue[i];
+      // Build context with prior responses
+      let contextPrompt = `User Question: ${question}`;
+      if (priorResponses?.length) {
+        contextPrompt += '\n\nPrior Advisor Responses:\n';
+        for (const prior of priorResponses) {
+          contextPrompt += `\n### ${prior.advisorName}\n${prior.response}\n`;
+        }
+      }
 
-    const advisorResponse = await queryAdvisor(personaId, questionText, currentMessages);
+      const result = await generateText({
+        model,
+        system: persona.systemPrompt,
+        prompt: contextPrompt
+      });
 
-    // Add response to messages, track completion
-    // ...
-  }
-
-  // All advisors done - trigger synthesis
-  triggerSynthesis();
+      return {
+        advisorName: persona.name,
+        response: result.text
+      };
+    }
+  });
 }
 ```
 
-**Stream parsing** (AI SDK v5 uses SSE format):
+**API endpoint** (`src/routes/api/council/+server.ts`):
 
 ```typescript
-// AI SDK v5 uses SSE format: data: {...JSON...}
-if (line.startsWith('data: ')) {
-  const part = JSON.parse(line.slice(6));
+export const POST: RequestHandler = async ({ request, locals, platform }) => {
+  const { question, conversationId } = await request.json();
 
-  switch (part.type) {
-    case 'text-delta':
-      responseText += part.delta;
-      break;
-    case 'start':
-      // Extract metadata (conversationId, userMessageId)
-      break;
-    case 'finish':
-      // Extract final metadata
-      break;
-  }
-}
+  const personas = await personaService.getDefaults();
+  const agent = createCouncilAgent(personas, platform.env);
+
+  // Agent handles all orchestration
+  const result = await agent.generate({ prompt: question });
+
+  // Save to database and return complete result
+  return new Response(JSON.stringify({
+    conversationId,
+    userMessageId,
+    synthesis: result.output  // Structured synthesis + raw responses
+  }));
+};
 ```
 
 ### Pros and Cons
 
 **Pros:**
 
-- Full control over execution flow
-- Simple to understand and debug
-- Works with any LLM provider
-- No additional dependencies
+- ✅ Agent handles orchestration automatically
+- ✅ Guaranteed sequential execution
+- ✅ Type-safe structured output with Zod
+- ✅ Single API call from client
+- ✅ DevTools integration for debugging
+- ✅ No manual stream parsing
+- ✅ Built-in error handling
+- ✅ Simpler client code
 
 **Cons:**
 
-- Manual state management
-- Custom stream parsing required
-- Error handling complexity
-- No built-in retry/fallback mechanisms
+- ❌ Currently synchronous (no streaming yet)
+- ❌ Requires AI SDK 6 features
+- ❌ Less control over execution details
 
 ---
 
