@@ -294,15 +294,17 @@ data: {"type":"error","error":"Error message"}
    - `consultSage` - receives only the question
    - `consultSkeptic` - receives question + Sage's response
    - `consultStrategist` - receives question + both prior responses
-3. Each advisor's response is streamed to the client immediately upon completion
-4. Agent generates structured synthesis using Output.object()
-5. Synthesis is streamed to client
-6. All responses and synthesis are saved to database
+3. **Streaming via onStepFinish callback**: As each tool execution completes, the `onStepFinish` callback fires
+4. Callback immediately streams the advisor response to client via SSE
+5. Response is also saved to database immediately
+6. After all advisors complete, agent generates structured synthesis using Output.object()
+7. Synthesis is streamed to client and saved to database
 
 **Streaming Benefits**:
-- Real-time feedback as each advisor completes
+- Real-time feedback as each advisor completes (via onStepFinish callbacks)
 - Better UX - users see progress as it happens
 - Each advisor response appears immediately (no waiting for all three)
+- Uses idiomatic AI SDK pattern with callbacks instead of manual stream parsing
 
 ---
 

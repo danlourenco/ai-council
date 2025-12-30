@@ -239,7 +239,7 @@ CRITICAL: Always call advisors in this exact order. Each subsequent advisor must
 
 ### 3. API Endpoint (`src/routes/api/council/+server.ts`)
 
-The endpoint creates the agent and executes it with streaming:
+The endpoint creates the agent and executes it with streaming using `onStepFinish` callbacks:
 
 ```typescript
 import { createCouncilAgent } from '$lib/server/ai/council-agent';
@@ -266,43 +266,58 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
     GOOGLE_AI_API_KEY: platform?.env?.GOOGLE_AI_API_KEY ?? ''
   });
 
-  // Stream agent execution
-  const stream = agent.stream({ prompt: question });
-
   // Create Server-Sent Events stream
   const encoder = new TextEncoder();
-  const readable = new ReadableStream({
+  const stream = new ReadableStream({
     async start(controller) {
-      // Send metadata
-      controller.enqueue(encoder.encode(
-        `data: ${JSON.stringify({ type: 'metadata', conversationId, userMessageId })}\n\n`
-      ));
+      try {
+        // Send metadata
+        controller.enqueue(encoder.encode(
+          `data: ${JSON.stringify({ type: 'metadata', conversationId, userMessageId })}\n\n`
+        ));
 
-      // Stream advisor responses as tool results complete
-      for await (const event of stream.fullStream) {
-        if (event.type === 'tool-result') {
-          const advisor = event.result;
-          // Stream to client immediately
+        // Execute agent with onStepFinish callback
+        const result = await agent.generate({
+          prompt: question,
+          onStepFinish: async (step) => {
+            // Stream each tool result (advisor response) as it completes
+            if (step.toolResults && step.toolResults.length > 0) {
+              for (const toolResult of step.toolResults) {
+                if (toolResult.type === 'tool-result') {
+                  const advisor = toolResult.output;
+
+                  // Stream to client immediately
+                  controller.enqueue(encoder.encode(
+                    `data: ${JSON.stringify({ type: 'advisor-response', advisor })}\n\n`
+                  ));
+
+                  // Save to database immediately
+                  await messageService.create({ ... });
+                }
+              }
+            }
+          }
+        });
+
+        // Stream synthesis
+        if (result.output) {
           controller.enqueue(encoder.encode(
-            `data: ${JSON.stringify({ type: 'advisor-response', advisor })}\n\n`
+            `data: ${JSON.stringify({ type: 'synthesis', synthesis: result.output })}\n\n`
           ));
-          // Save to database
-          await messageService.create({ ... });
         }
+
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        controller.close();
+      } catch (error) {
+        controller.enqueue(encoder.encode(
+          `data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`
+        ));
+        controller.close();
       }
-
-      // Get final result and stream synthesis
-      const finalResult = await stream.result;
-      controller.enqueue(encoder.encode(
-        `data: ${JSON.stringify({ type: 'synthesis', synthesis: finalResult.output })}\n\n`
-      ));
-
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-      controller.close();
     }
   });
 
-  return new Response(readable, {
+  return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',
