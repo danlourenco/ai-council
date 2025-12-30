@@ -237,7 +237,7 @@ d:{"finishReason":"stop","usage":{"promptTokens":150,"completionTokens":500}}
 
 ### Council Session (Brain Trust Mode)
 
-In Brain Trust mode, all three default advisors (The Sage, The Skeptic, The Strategist) are consulted via a unified endpoint. The server-side ToolLoopAgent orchestrates sequential advisor calls and generates a structured synthesis.
+In Brain Trust mode, all three default advisors (The Sage, The Skeptic, The Strategist) are consulted via a unified endpoint. The server-side ToolLoopAgent orchestrates sequential advisor calls and generates a structured synthesis, streaming results in real-time as each advisor completes.
 
 ```http
 POST /api/council
@@ -254,49 +254,38 @@ Content-Type: application/json
 - `conversationId`: ID of existing conversation (optional - creates new conversation if omitted)
 
 **Response Headers**:
-- `Content-Type: application/json`
+- `Content-Type: text/event-stream`
+- `Cache-Control: no-cache, no-transform`
 - `X-Conversation-Id`: The conversation ID (created or existing)
 - `X-User-Message-Id`: Database ID of the saved user message
 
-**Response Body** (JSON):
-```json
-{
-  "conversationId": "conv_xyz789",
-  "userMessageId": "msg_user123",
-  "synthesis": {
-    "pointsOfAgreement": [
-      "All advisors agree that financial runway is critical",
-      "Market timing plays a significant role"
-    ],
-    "keyTensions": [
-      {
-        "topic": "Risk tolerance",
-        "sagePosition": "Balance opportunity with security",
-        "skepticPosition": "Most startups fail - quantify your downside",
-        "strategistPosition": "Create a decision framework with clear milestones"
-      }
-    ],
-    "recommendedNextSteps": [
-      "Calculate 12-18 month runway requirements",
-      "Define success/failure criteria",
-      "Set a decision deadline"
-    ],
-    "rawAdvisorResponses": [
-      {
-        "advisorName": "The Sage",
-        "response": "Starting a company is a profound decision..."
-      },
-      {
-        "advisorName": "The Skeptic",
-        "response": "Let me challenge some assumptions..."
-      },
-      {
-        "advisorName": "The Strategist",
-        "response": "Here's a framework to evaluate this decision..."
-      }
-    ]
-  }
-}
+**Response Format**: Server-Sent Events (SSE) stream
+
+The endpoint streams events as they occur:
+
+**1. Metadata Event** (sent first):
+```
+data: {"type":"metadata","conversationId":"conv_xyz789","userMessageId":"msg_user123"}
+```
+
+**2. Advisor Response Events** (sent as each advisor completes):
+```
+data: {"type":"advisor-response","advisor":{"advisorId":"persona_sage","advisorName":"The Sage","advisorRole":"Balanced Wisdom","response":"Starting a company is a profound decision..."}}
+```
+
+**3. Synthesis Event** (sent after all advisors complete):
+```
+data: {"type":"synthesis","synthesis":{"pointsOfAgreement":["..."],"keyTensions":[{"topic":"...","sagePosition":"...","skepticPosition":"...","strategistPosition":"..."}],"recommendedNextSteps":["..."]}}
+```
+
+**4. Completion Event**:
+```
+data: [DONE]
+```
+
+**Error Event** (if an error occurs):
+```
+data: {"type":"error","error":"Error message"}
 ```
 
 **How it works**:
@@ -305,11 +294,15 @@ Content-Type: application/json
    - `consultSage` - receives only the question
    - `consultSkeptic` - receives question + Sage's response
    - `consultStrategist` - receives question + both prior responses
-3. Agent generates structured synthesis using Output.object()
-4. All responses and synthesis are saved to database
-5. Complete results returned as JSON
+3. Each advisor's response is streamed to the client immediately upon completion
+4. Agent generates structured synthesis using Output.object()
+5. Synthesis is streamed to client
+6. All responses and synthesis are saved to database
 
-**Note**: This endpoint does not stream. The agent executes all steps server-side and returns the complete result. Streaming support may be added in a future update.
+**Streaming Benefits**:
+- Real-time feedback as each advisor completes
+- Better UX - users see progress as it happens
+- Each advisor response appears immediately (no waiting for all three)
 
 ---
 

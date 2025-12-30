@@ -239,7 +239,7 @@ CRITICAL: Always call advisors in this exact order. Each subsequent advisor must
 
 ### 3. API Endpoint (`src/routes/api/council/+server.ts`)
 
-The endpoint creates the agent and executes it synchronously:
+The endpoint creates the agent and executes it with streaming:
 
 ```typescript
 import { createCouncilAgent } from '$lib/server/ai/council-agent';
@@ -258,28 +258,56 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
   const conversationService = new ConversationService(locals.db);
   const messageService = new MessageService(locals.db);
 
-  // Get default personas
+  // Get default personas and create agent
   const personas = await personaService.getDefaults();
-
-  // Create agent
   const agent = createCouncilAgent(personas, {
     ANTHROPIC_API_KEY: platform?.env?.ANTHROPIC_API_KEY ?? '',
     OPENAI_API_KEY: platform?.env?.OPENAI_API_KEY ?? '',
     GOOGLE_AI_API_KEY: platform?.env?.GOOGLE_AI_API_KEY ?? ''
   });
 
-  // Execute agent
-  const result = await agent.generate({ prompt: question });
+  // Stream agent execution
+  const stream = agent.stream({ prompt: question });
 
-  // Save to database...
-  // Return complete result as JSON
-  return new Response(JSON.stringify({
-    conversationId,
-    userMessageId,
-    synthesis: result.output
-  }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' }
+  // Create Server-Sent Events stream
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream({
+    async start(controller) {
+      // Send metadata
+      controller.enqueue(encoder.encode(
+        `data: ${JSON.stringify({ type: 'metadata', conversationId, userMessageId })}\n\n`
+      ));
+
+      // Stream advisor responses as tool results complete
+      for await (const event of stream.fullStream) {
+        if (event.type === 'tool-result') {
+          const advisor = event.result;
+          // Stream to client immediately
+          controller.enqueue(encoder.encode(
+            `data: ${JSON.stringify({ type: 'advisor-response', advisor })}\n\n`
+          ));
+          // Save to database
+          await messageService.create({ ... });
+        }
+      }
+
+      // Get final result and stream synthesis
+      const finalResult = await stream.result;
+      controller.enqueue(encoder.encode(
+        `data: ${JSON.stringify({ type: 'synthesis', synthesis: finalResult.output })}\n\n`
+      ));
+
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+      controller.close();
+    }
+  });
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no' // Prevent buffering
+    }
   });
 };
 ```
@@ -310,7 +338,7 @@ The ToolLoopAgent uses Zod to define a structured output schema:
 
 ## Client Integration
 
-The client simply calls the endpoint and displays the results:
+The client consumes the Server-Sent Events stream and displays results in real-time:
 
 ```typescript
 async function startCouncilSession(question: string) {
@@ -320,17 +348,53 @@ async function startCouncilSession(question: string) {
     body: JSON.stringify({ question })
   });
 
-  const data = await response.json();
+  // Parse the SSE stream
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
 
-  // Display advisor responses
-  for (const advisor of data.synthesis.rawAdvisorResponses) {
-    displayAdvisorCard(advisor.advisorName, advisor.response);
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6);
+
+        if (data === '[DONE]') {
+          // Stream complete
+          return;
+        }
+
+        const event = JSON.parse(data);
+
+        if (event.type === 'metadata') {
+          // Update conversation ID
+          conversationId = event.conversationId;
+        } else if (event.type === 'advisor-response') {
+          // Display advisor response immediately
+          displayAdvisorCard(event.advisor);
+        } else if (event.type === 'synthesis') {
+          // Display synthesis
+          displaySynthesis(event.synthesis);
+        } else if (event.type === 'error') {
+          throw new Error(event.error);
+        }
+      }
+    }
   }
-
-  // Display synthesis
-  displaySynthesis(data.synthesis);
 }
 ```
+
+**Benefits of streaming:**
+- Advisor responses appear immediately as they complete
+- Users see progress in real-time
+- No waiting for all three advisors before seeing results
+- Better perceived performance
 
 ## DevTools Integration
 
@@ -401,13 +465,15 @@ User Question (id: msg_q1)
 - ❌ Multiple API calls (3+ requests)
 - ❌ Error recovery complex
 
-### After (Server-Side ToolLoopAgent)
+### After (Server-Side ToolLoopAgent with Streaming)
 - ✅ Agent handles orchestration
 - ✅ Guaranteed sequential execution
 - ✅ Type-safe structured output
 - ✅ Single API call
 - ✅ Built-in error handling
 - ✅ DevTools integration
+- ✅ Real-time streaming of advisor responses
+- ✅ Better UX with immediate feedback
 
 ## Testing
 

@@ -154,13 +154,12 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 - ✅ Type-safe structured output with Zod
 - ✅ Single API call from client
 - ✅ DevTools integration for debugging
-- ✅ No manual stream parsing
+- ✅ Real-time streaming of advisor responses
 - ✅ Built-in error handling
-- ✅ Simpler client code
+- ✅ Better UX with immediate feedback
 
 **Cons:**
 
-- ❌ Currently synchronous (no streaming yet)
 - ❌ Requires AI SDK 6 features
 - ❌ Less control over execution details
 
