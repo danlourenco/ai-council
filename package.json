@@ -46,12 +46,12 @@
     "wrangler": "^4.53.0"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.53",
-    "@ai-sdk/google": "^2.0.44",
-    "@ai-sdk/openai": "^2.0.79",
-    "@ai-sdk/svelte": "^3.0.108",
+    "@ai-sdk/anthropic": "^3.0.1",
+    "@ai-sdk/google": "^3.0.1",
+    "@ai-sdk/openai": "^3.0.1",
+    "@ai-sdk/svelte": "^4.0.3",
     "@better-auth/passkey": "^1.4.5",
-    "ai": "^5.0.108",
+    "ai": "^6.0.3",
     "better-auth": "^1.4.5",
     "drizzle-orm": "^0.45.0",
     "marked": "^17.0.1",
