@@ -87,8 +87,6 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 					const result = await agent.generate({
 						prompt: question,
 						onStepFinish: async (step) => {
-							console.log('[council] Step finished:', step.stepNumber);
-
 							// Check for tool results in this step
 							if (step.toolResults && step.toolResults.length > 0) {
 								for (const toolResult of step.toolResults) {
@@ -100,7 +98,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 											response: string;
 										};
 
-										console.log('[council] Advisor response:', advisorResponse.advisorName);
+										console.log('[council] Streaming advisor response:', advisorResponse.advisorName);
 
 										// Stream to client immediately
 										controller.enqueue(
