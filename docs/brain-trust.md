@@ -531,14 +531,24 @@ testCouncil();
 
 ## Future Enhancements
 
-1. **Streaming Support**: Stream advisor responses as they complete (Phase 5 of migration)
-2. **Custom Advisor Selection**: Allow users to select which advisors to consult
-3. **Follow-up Questions**: Ask specific advisors for clarification
-4. **Conversation Branching**: Explore alternative perspectives
-5. **Synthesis Customization**: User-defined synthesis prompts
+1. **Custom Advisor Selection**: Allow users to select which advisors to consult
+2. **Follow-up Questions**: Ask specific advisors for clarification
+3. **Conversation Branching**: Explore alternative perspectives
+4. **Synthesis Customization**: User-defined synthesis prompts
+5. **Token-by-token Streaming**: Stream advisor responses word-by-word during generation (currently streams complete responses)
 
 ## References
 
-- [AI SDK 6 Agents Documentation](https://vercel.com/blog/ai-sdk-6#agents)
-- [ToolLoopAgent API](https://sdk.vercel.ai/docs/ai-sdk-core/toolloopagent)
-- [Structured Output](https://sdk.vercel.ai/docs/ai-sdk-core/structured-output)
+### AI SDK Documentation
+
+- [AI SDK 6 Agents Documentation](https://vercel.com/blog/ai-sdk-6#agents) - Overview of agent capabilities
+- [Agents: Building Agents](https://ai-sdk.dev/docs/agents/building-agents) - Agent construction patterns and streaming methods
+- [AI SDK Core: ToolLoopAgent](https://ai-sdk.dev/docs/reference/ai-sdk-core/tool-loop-agent) - Complete ToolLoopAgent API reference
+- [AI SDK Core: streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) - StreamTextResult and stream formats
+- [Structured Output](https://sdk.vercel.ai/docs/ai-sdk-core/structured-output) - Zod schema-based output generation
+
+### Streaming Resources
+
+- [AI SDK UI: Stream Protocols](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) - Server-Sent Events format specification
+- [AI SDK Core: createAgentUIStreamResponse](https://ai-sdk.dev/docs/reference/ai-sdk-core/create-agent-ui-stream-response) - Agent streaming response patterns
+- [AI SDK Core: streamObject](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-object) - Streaming structured data with partialObjectStream

@@ -439,6 +439,10 @@ Three emerging protocols for agent communication:
 
 - [Vercel AI SDK - Workflow Patterns](https://ai-sdk.dev/docs/agents/workflows)
 - [Vercel AI SDK - Agents Foundation](https://ai-sdk.dev/docs/foundations/agents)
+- [Agents: Building Agents](https://ai-sdk.dev/docs/agents/building-agents) - Agent streaming patterns
+- [AI SDK Core: ToolLoopAgent](https://ai-sdk.dev/docs/reference/ai-sdk-core/tool-loop-agent) - Complete API reference
+- [AI SDK Core: streamText](https://ai-sdk.dev/docs/reference/ai-sdk-core/stream-text) - Stream formats and result types
+- [AI SDK UI: Stream Protocols](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol) - SSE format specification
 - [Anthropic MCP Introduction](https://www.anthropic.com/news/model-context-protocol)
 
 ### Libraries
@@ -458,3 +462,5 @@ Three emerging protocols for agent communication:
 
 - **2024-12-08:** Initial documentation created
 - **2024-12-08:** Implemented manual orchestration for Brain Trust
+- **2024-12-29:** Migrated to AI SDK 6 ToolLoopAgent with server-side orchestration
+- **2024-12-29:** Implemented real-time streaming of advisor responses
