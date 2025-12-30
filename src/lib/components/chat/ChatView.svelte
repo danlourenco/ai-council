@@ -7,9 +7,8 @@
 	import PersonaSelector from './PersonaSelector.svelte';
 	import ModeSelector from './ModeSelector.svelte';
 	import SynthesisCard from './SynthesisCard.svelte';
-	import { BrainTrust, parseAISDKStream } from '$lib/brain-trust';
 	import type { Persona, Message as DbMessage, ConversationMode } from '$lib/server/db/schema';
-	import type { Advisor } from '$lib/brain-trust';
+	import type { CouncilSynthesis } from '$lib/server/ai/council-agent';
 
 	interface Props {
 		personas: Persona[];
@@ -28,12 +27,11 @@
 	let currentConversationId = $state<string | null>(conversationId ?? null);
 
 	// ═══════════════════════════════════════════════════════════════════
-	// Persona Selection State
+	// Persona Selection State (Quick mode only)
 	// ═══════════════════════════════════════════════════════════════════
 
 	const defaultPersonaId = $derived(personas[0]?.id ?? '');
 	let selectedPersonaId = $state('');
-	let selectedPersonaIds = $state<string[]>([]);
 
 	// Initialize selected persona for quick mode
 	$effect(() => {
@@ -42,41 +40,8 @@
 		}
 	});
 
-	// Initialize multi-select when starting in brain-trust mode
-	$effect(() => {
-		if (initialMode === 'brain-trust' && selectedPersonaIds.length === 0) {
-			selectedPersonaIds = personas.map((p) => p.id);
-		}
-	});
-
-	// Load initial messages into Brain Trust when viewing a saved conversation
-	$effect(() => {
-		if (initialMode === 'brain-trust' && initialMessages.length > 0 && brainTrust.messages.length === 0) {
-			// Convert DB messages to Brain Trust format
-			const btMessages = initialMessages
-				.filter((msg) => msg.role !== 'synthesis')
-				.map((msg) => ({
-					id: msg.id,
-					role: msg.role as 'user' | 'advisor',
-					content: msg.content,
-					advisorId: msg.personaId ?? undefined
-				}));
-
-			// Find synthesis message if exists
-			const synthesisMsg = initialMessages.find((msg) => msg.role === 'synthesis');
-
-			brainTrust.loadMessages(btMessages, synthesisMsg?.content);
-			console.log('[ChatView] Loaded Brain Trust messages from DB:', btMessages.length, 'synthesis:', !!synthesisMsg);
-		}
-	});
-
 	const selectedPersona = $derived(
 		personas.find((p) => p.id === (selectedPersonaId || defaultPersonaId))
-	);
-
-	// Get personas for brain trust in order
-	const selectedPersonasForBrainTrust = $derived(
-		selectedPersonaIds.map((id) => personas.find((p) => p.id === id)).filter(Boolean) as Persona[]
 	);
 
 	// ═══════════════════════════════════════════════════════════════════
@@ -138,93 +103,129 @@
 	});
 
 	// ═══════════════════════════════════════════════════════════════════
-	// Brain Trust Mode - BrainTrust Class
+	// Brain Trust Mode - Council Agent State
 	// ═══════════════════════════════════════════════════════════════════
 
-	// Track the database user message ID (captured from first advisor response)
-	let dbUserMessageId = $state<string | null>(null);
+	type BrainTrustMessage = {
+		id: string;
+		role: 'user' | 'advisor';
+		content: string;
+		personaId?: string;
+	};
 
-	const brainTrust = new BrainTrust({
-		fetchAdvisor: async (advisor, messages) => {
-			// First advisor call saves the user message and returns the ID
-			// Subsequent calls pass the parentMessageId to link responses
-			const isFirstAdvisor = !dbUserMessageId;
+	let brainTrustMessages = $state<BrainTrustMessage[]>([]);
+	let brainTrustSynthesis = $state<CouncilSynthesis | null>(null);
+	let brainTrustStatus = $state<'idle' | 'loading' | 'error'>('idle');
+	let brainTrustError = $state<string | null>(null);
 
-			const response = await fetch('/api/chat', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					personaId: advisor.id,
-					messages: messages.map((m) => ({
-						role: m.role === 'advisor' ? 'assistant' : m.role,
-						content: m.content
-					})),
-					mode: 'brain-trust',
-					conversationId: currentConversationId,
-					// Pass parent message ID for subsequent advisors
-					parentMessageId: isFirstAdvisor ? undefined : dbUserMessageId
-				})
-			});
+	// Load initial messages for brain-trust mode when viewing saved conversation
+	$effect(() => {
+		if (mode === 'brain-trust' && initialMessages.length > 0 && brainTrustMessages.length === 0) {
+			// Load user and advisor messages
+			brainTrustMessages = initialMessages
+				.filter((msg) => msg.role === 'user' || msg.role === 'advisor')
+				.map((msg) => ({
+					id: msg.id,
+					role: msg.role as 'user' | 'advisor',
+					content: msg.content,
+					personaId: msg.personaId ?? undefined
+				}));
 
-			// Extract IDs from response headers
-			if (response.ok) {
-				const convIdHeader = response.headers.get('X-Conversation-Id');
-				const userMsgIdHeader = response.headers.get('X-User-Message-Id');
-
-				if (convIdHeader && !currentConversationId) {
-					currentConversationId = convIdHeader;
+			// Load synthesis if exists
+			const synthesisMsg = initialMessages.find((msg) => msg.role === 'synthesis');
+			if (synthesisMsg?.content) {
+				try {
+					brainTrustSynthesis = JSON.parse(synthesisMsg.content);
+				} catch (e) {
+					console.error('[ChatView] Failed to parse synthesis:', e);
 				}
-
-				if (userMsgIdHeader && !dbUserMessageId) {
-					dbUserMessageId = userMsgIdHeader;
-				}
-			}
-
-			return response;
-		},
-		fetchSynthesis: async () => {
-			if (!dbUserMessageId) {
-				throw new Error('No user message ID available for synthesis');
-			}
-
-			return fetch('/api/chat/synthesis', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					conversationId: currentConversationId,
-					userQuestionId: dbUserMessageId
-				})
-			});
-		},
-		parseStream: parseAISDKStream,
-		onError: (error, phase, advisor) => {
-			console.error(`[BrainTrust] Error in ${phase}:`, advisor?.name, error);
-		},
-		onSynthesisComplete: () => {
-			// Update URL after brain trust completes (not during streaming)
-			if (currentConversationId) {
-				replaceState(`/chat/${currentConversationId}`, {});
-				// Refresh sidebar to show new conversation
-				invalidateAll();
 			}
 		}
 	});
+
+	async function startCouncilSession(question: string) {
+		brainTrustStatus = 'loading';
+		brainTrustError = null;
+
+		// Add user message to UI immediately
+		const userMessage: BrainTrustMessage = {
+			id: 'temp-user',
+			role: 'user',
+			content: question
+		};
+		brainTrustMessages = [...brainTrustMessages, userMessage];
+
+		try {
+			const response = await fetch('/api/council', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					question,
+					conversationId: currentConversationId
+				})
+			});
+
+			if (!response.ok) {
+				const error = await response.text();
+				throw new Error(error || 'Failed to get council response');
+			}
+
+			const data = await response.json();
+
+			// Update conversation ID if this was a new conversation
+			if (data.conversationId && !currentConversationId) {
+				currentConversationId = data.conversationId;
+				replaceState(`/chat/${data.conversationId}`, {});
+			}
+
+			// Update user message ID
+			if (data.userMessageId) {
+				userMessage.id = data.userMessageId;
+			}
+
+			// Add advisor responses to messages
+			if (data.synthesis?.rawAdvisorResponses) {
+				const advisorMessages: BrainTrustMessage[] = data.synthesis.rawAdvisorResponses.map(
+					(advisor: { advisorName: string; response: string }) => {
+						const persona = personas.find((p) => p.name === advisor.advisorName);
+						return {
+							id: `${data.userMessageId}-${advisor.advisorName}`,
+							role: 'advisor' as const,
+							content: advisor.response,
+							personaId: persona?.id
+						};
+					}
+				);
+
+				brainTrustMessages = [...brainTrustMessages, ...advisorMessages];
+			}
+
+			// Set synthesis
+			brainTrustSynthesis = data.synthesis;
+
+			brainTrustStatus = 'idle';
+
+			// Refresh sidebar to show new conversation
+			await invalidateAll();
+		} catch (error) {
+			brainTrustStatus = 'error';
+			brainTrustError = error instanceof Error ? error.message : 'Unknown error';
+			console.error('[ChatView] Council error:', error);
+		}
+	}
 
 	// ═══════════════════════════════════════════════════════════════════
 	// Derived State for UI
 	// ═══════════════════════════════════════════════════════════════════
 
 	// Check if we're in an active brain trust session
-	const isBrainTrustActive = $derived(brainTrust.status !== 'idle');
+	const isBrainTrustActive = $derived(brainTrustStatus === 'loading');
 
 	// Whether the input should be disabled
 	const isInputDisabled = $derived(
 		(mode === 'quick' && (chat.status === 'streaming' || chat.status === 'submitted')) ||
-			(mode === 'brain-trust' && brainTrust.isActive)
+			(mode === 'brain-trust' && brainTrustStatus === 'loading')
 	);
-
-	// Minimum advisors for brain trust
-	const canStartBrainTrust = $derived(selectedPersonaIds.length >= 2);
 
 	// ═══════════════════════════════════════════════════════════════════
 	// Event Handlers
@@ -233,19 +234,8 @@
 	function handleQuestionSubmit(text: string) {
 		if (mode === 'quick') {
 			chat.sendMessage({ text });
-		} else if (mode === 'brain-trust' && canStartBrainTrust) {
-			// Convert personas to advisors
-			const advisors: Advisor[] = selectedPersonasForBrainTrust.map((p) => ({
-				id: p.id,
-				name: p.name,
-				systemPrompt: p.systemPrompt,
-				modelId: p.defaultModelId,
-				accentColor: p.accentColor,
-				avatarEmoji: p.avatarEmoji,
-				role: p.role
-			}));
-
-			brainTrust.start(text, advisors);
+		} else if (mode === 'brain-trust') {
+			startCouncilSession(text);
 		}
 	}
 
@@ -253,26 +243,23 @@
 		selectedPersonaId = id;
 	}
 
-	function handleMultiSelect(ids: string[]) {
-		selectedPersonaIds = ids;
-	}
-
 	function handleModeChange(newMode: ConversationMode) {
 		mode = newMode;
-
-		// Initialize multi-select with all personas when entering brain trust mode
-		if (newMode === 'brain-trust' && selectedPersonaIds.length === 0) {
-			selectedPersonaIds = personas.map((p) => p.id);
-		}
 	}
 
 	function startNewChat() {
-		brainTrust.reset();
-		dbUserMessageId = null;
+		// Reset brain trust state
+		brainTrustMessages = [];
+		brainTrustSynthesis = null;
+		brainTrustStatus = 'idle';
+		brainTrustError = null;
+
+		// Reset quick mode
 		chat = new Chat<UIMessage>({
 			transport: createTransport(),
 			messages: []
 		});
+
 		currentConversationId = null;
 		goto('/chat');
 	}
@@ -302,17 +289,13 @@
 
 	// Get the placeholder text based on mode
 	const inputPlaceholder = $derived(
-		mode === 'brain-trust'
-			? canStartBrainTrust
-				? 'Ask the council...'
-				: 'Select at least 2 advisors'
-			: `Ask ${selectedPersona?.name ?? 'the council'}...`
+		mode === 'brain-trust' ? 'Ask the council...' : `Ask ${selectedPersona?.name ?? 'the council'}...`
 	);
 
 	// Check if we have any messages to display
 	const hasMessages = $derived(
 		(mode === 'quick' && chat.messages.length > 0) ||
-			(mode === 'brain-trust' && brainTrust.messages.length > 0)
+			(mode === 'brain-trust' && brainTrustMessages.length > 0)
 	);
 </script>
 
@@ -323,20 +306,12 @@
 			<ModeSelector {mode} onSelect={handleModeChange} disabled={isBrainTrustActive} />
 		</div>
 
-		<!-- Persona Selector -->
+		<!-- Persona Selector (Quick mode only) -->
 		{#if mode === 'quick'}
 			<PersonaSelector
 				{personas}
 				selected={selectedPersonaId || defaultPersonaId}
 				onSelect={selectPersona}
-			/>
-		{:else if mode === 'brain-trust'}
-			<PersonaSelector
-				{personas}
-				multiSelect={true}
-				selectedIds={selectedPersonaIds}
-				onMultiSelect={handleMultiSelect}
-				disabled={isBrainTrustActive}
 			/>
 		{/if}
 	</header>
@@ -348,9 +323,9 @@
 			<div class="alert alert-error">
 				<span>Error: {chat.error.message}</span>
 			</div>
-		{:else if mode === 'brain-trust' && brainTrust.error}
+		{:else if mode === 'brain-trust' && brainTrustError}
 			<div class="alert alert-error">
-				<span>Error: {brainTrust.error}</span>
+				<span>Error: {brainTrustError}</span>
 			</div>
 		{/if}
 
@@ -369,13 +344,8 @@
 					<div class="text-5xl sm:text-6xl mb-4">🧠</div>
 					<h3 class="text-lg sm:text-xl font-semibold mb-2">Brain Trust</h3>
 					<p class="text-sm sm:text-base text-base-content/60 max-w-md">
-						{#if selectedPersonaIds.length < 2}
-							Select at least 2 advisors to consult. They will respond in order and can reference
-							each other's perspectives.
-						{:else}
-							Your {selectedPersonaIds.length} advisors will respond in order. Each can see previous
-							responses, enabling debate and critique.
-						{/if}
+						Consult all three default advisors (The Sage, The Skeptic, and The Strategist).
+						They will respond in sequence, with each able to see and reference previous responses.
 					</p>
 				{/if}
 			</div>
@@ -401,8 +371,8 @@
 
 			<!-- Brain Trust Messages -->
 		{:else if mode === 'brain-trust'}
-			<!-- Completed Messages -->
-			{#each brainTrust.messages as message (message.id)}
+			<!-- Messages -->
+			{#each brainTrustMessages as message (message.id)}
 				{#if message.role === 'user'}
 					<div class="chat chat-end">
 						<div class="chat-bubble chat-bubble-primary text-sm sm:text-base">
@@ -411,35 +381,27 @@
 					</div>
 				{:else if message.role === 'advisor'}
 					<AdvisorCard
-						persona={message.advisorId ? getPersonaById(message.advisorId) : undefined}
+						persona={message.personaId ? getPersonaById(message.personaId) : undefined}
 						content={message.content}
 						isStreaming={false}
 					/>
 				{/if}
 			{/each}
 
-			<!-- Currently Streaming Advisor -->
-			{#if brainTrust.streamingAdvisorId}
-				<AdvisorCard
-					persona={getPersonaById(brainTrust.streamingAdvisorId)}
-					content={brainTrust.streamingContent}
-					isStreaming={true}
-				/>
-			{/if}
-
-			<!-- Progress Indicator -->
-			{#if brainTrust.status === 'querying' && !brainTrust.streamingAdvisorId}
-				<div class="flex justify-center py-4">
-					<span class="loading loading-spinner loading-md"></span>
+			<!-- Loading Indicator -->
+			{#if brainTrustStatus === 'loading'}
+				<div class="flex flex-col items-center justify-center py-8 gap-3">
+					<span class="loading loading-spinner loading-lg"></span>
+					<p class="text-sm text-base-content/60">Consulting the council...</p>
 				</div>
 			{/if}
 
 			<!-- Synthesis -->
-			{#if brainTrust.synthesisContent || brainTrust.status === 'synthesizing'}
+			{#if brainTrustSynthesis}
 				<SynthesisCard
-					content={brainTrust.synthesisContent}
-					isStreaming={brainTrust.status === 'synthesizing'}
-					participatingPersonas={selectedPersonasForBrainTrust}
+					synthesis={brainTrustSynthesis}
+					isStreaming={false}
+					participatingPersonas={personas.filter((p) => p.isDefault)}
 				/>
 			{/if}
 		{/if}
@@ -447,10 +409,6 @@
 
 	<!-- Input -->
 	<footer class="p-2 sm:p-4 border-t border-base-300 bg-base-100">
-		<QuestionInput
-			onSubmit={handleQuestionSubmit}
-			disabled={isInputDisabled || (mode === 'brain-trust' && !canStartBrainTrust)}
-			placeholder={inputPlaceholder}
-		/>
+		<QuestionInput onSubmit={handleQuestionSubmit} disabled={isInputDisabled} placeholder={inputPlaceholder} />
 	</footer>
 </div>

@@ -1,25 +1,58 @@
 <script lang="ts">
 	import { marked } from 'marked';
 	import type { Persona } from '$lib/server/db/schema';
+	import type { CouncilSynthesis } from '$lib/server/ai/council-agent';
 
 	interface Props {
-		content: string;
+		synthesis: CouncilSynthesis;
 		isStreaming?: boolean;
 		participatingPersonas?: Persona[];
 	}
 
-	let { content, isStreaming = false, participatingPersonas = [] }: Props = $props();
+	let { synthesis, isStreaming = false, participatingPersonas = [] }: Props = $props();
 
 	// Gold accent for synthesis
 	const accentColor = '#c9a227';
 
-	// Configure marked for safe rendering
-	marked.setOptions({
-		gfm: true,
-		breaks: true
-	});
+	// Format synthesis into markdown
+	function formatSynthesis(s: CouncilSynthesis): string {
+		let markdown = '';
 
-	const renderedContent = $derived(marked.parse(content) as string);
+		if (s.pointsOfAgreement?.length) {
+			markdown += '## Points of Agreement\n\n';
+			s.pointsOfAgreement.forEach((point) => {
+				markdown += `- ${point}\n`;
+			});
+			markdown += '\n';
+		}
+
+		if (s.keyTensions?.length) {
+			markdown += '## Key Tensions\n\n';
+			s.keyTensions.forEach((tension) => {
+				markdown += `### ${tension.topic}\n\n`;
+				if (tension.sagePosition) {
+					markdown += `**The Sage**: ${tension.sagePosition}\n\n`;
+				}
+				if (tension.skepticPosition) {
+					markdown += `**The Skeptic**: ${tension.skepticPosition}\n\n`;
+				}
+				if (tension.strategistPosition) {
+					markdown += `**The Strategist**: ${tension.strategistPosition}\n\n`;
+				}
+			});
+		}
+
+		if (s.recommendedNextSteps?.length) {
+			markdown += '## Recommended Next Steps\n\n';
+			s.recommendedNextSteps.forEach((step, i) => {
+				markdown += `${i + 1}. ${step}\n`;
+			});
+		}
+
+		return markdown;
+	}
+
+	const renderedContent = $derived(marked.parse(formatSynthesis(synthesis)) as string);
 </script>
 
 <div class="card bg-base-100 shadow-md border-l-4" style="border-left-color: {accentColor}">
