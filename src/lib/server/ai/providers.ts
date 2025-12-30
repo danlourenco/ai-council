@@ -1,7 +1,9 @@
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { LanguageModel } from 'ai';
+import { wrapLanguageModel, type LanguageModel, type LanguageModelV3 } from 'ai';
+import { devToolsMiddleware } from '@ai-sdk/devtools';
+import { dev } from '$app/environment';
 
 // Re-export model metadata from shared module
 export { AVAILABLE_MODELS, getModelInfo, getModelsByProvider } from '$lib/models';
@@ -17,12 +19,23 @@ const modelMap: Record<string, (env: Record<string, string>) => LanguageModel> =
 	'gemini-1.5-pro': (env) => createGoogleGenerativeAI({ apiKey: env.GOOGLE_AI_API_KEY })('gemini-1.5-pro')
 };
 
-export function getModel(modelId: string, env: Record<string, string>): LanguageModel {
+export function getModel(modelId: string, env: Record<string, string>): LanguageModelV3 {
 	const modelFactory = modelMap[modelId];
 	if (!modelFactory) {
 		throw new Error(`Unknown model: ${modelId}`);
 	}
-	return modelFactory(env);
+
+	const model = modelFactory(env);
+
+	// Wrap with DevTools middleware in development mode
+	if (dev) {
+		return wrapLanguageModel({
+			model,
+			middleware: devToolsMiddleware()
+		});
+	}
+
+	return model as LanguageModelV3;
 }
 
 // Get available models

@@ -227,6 +227,27 @@ npx drizzle-kit generate
 npx wrangler d1 execute council-db --local --file=drizzle/migrations/<name>.sql
 ```
 
+### AI SDK DevTools
+
+The Council uses AI SDK 6's DevTools for debugging agent flows and LLM calls. In development mode, all model calls are automatically wrapped with DevTools middleware.
+
+**Launch the DevTools viewer:**
+
+```bash
+# Start the DevTools viewer (in a separate terminal)
+npx @ai-sdk/devtools
+
+# Then open http://localhost:4983 in your browser
+```
+
+**Inspect:**
+- Input prompts and parameters
+- Tool calls and results
+- Token usage and timing
+- Raw provider request/response data
+
+This is especially useful for debugging Brain Trust mode, where you can see the full context passed to each advisor and how the agent orchestrates tool calls.
+
 ## Environment Variables
 
 | Variable | Required | Description |
